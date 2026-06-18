@@ -24,3 +24,12 @@ After disabling the plugin:
 - Output panel stays clean.
 
 Re-enable and restart the editor with the plugin enabled to confirm it loads without errors.
+
+## Dock
+
+After enabling the plugin, the **Godot-a-Sketch** dock appears on the left side of the editor (default slot).
+
+- **Shader Stack** — use **Add** / **Remove** to manage layer name entries (UI-only until shader resources are wired in a later issue).
+- **Brush** — **Size**, **Opacity** (0–100%), and **Hardness** (0–100%) sliders update values in real time.
+- Brush settings and stack names persist across editor restarts via editor settings.
+- Dock position and floating state persist via Godot's built-in editor layout system.
