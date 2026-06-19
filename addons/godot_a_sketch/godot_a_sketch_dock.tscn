@@ -57,6 +57,49 @@ text = "Remove"
 [node name="Separator" type="HSeparator" parent="Margin/VBox"]
 layout_mode = 2
 
+[node name="TargetSection" type="VBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="TargetLabel" type="Label" parent="Margin/VBox/TargetSection"]
+layout_mode = 2
+text = "Target"
+
+[node name="TargetButtons" type="HBoxContainer" parent="Margin/VBox/TargetSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="MarkBrushableButton" type="Button" parent="Margin/VBox/TargetSection/TargetButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Mark Brushable"
+
+[node name="UnmarkBrushableButton" type="Button" parent="Margin/VBox/TargetSection/TargetButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Unmark"
+
+[node name="ModifierRow" type="HBoxContainer" parent="Margin/VBox/TargetSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ModifierCaption" type="Label" parent="Margin/VBox/TargetSection/ModifierRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "Modifier"
+
+[node name="ModifierOption" type="OptionButton" parent="Margin/VBox/TargetSection/ModifierRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RaycastLabel" type="Label" parent="Margin/VBox/TargetSection"]
+layout_mode = 2
+text = "No hit"
+autowrap_mode = 3
+
+[node name="Separator2" type="HSeparator" parent="Margin/VBox"]
+layout_mode = 2
+
 [node name="BrushSection" type="VBoxContainer" parent="Margin/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 4
