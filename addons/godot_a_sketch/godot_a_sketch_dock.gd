@@ -1,6 +1,8 @@
 @tool
 extends Control
 
+signal ghost_settings_changed
+
 const SETTINGS_PREFIX := "godot_a_sketch/"
 const DEFAULT_LAYER_NAME := "Layer 1"
 const DEFAULT_SIZE := 32.0
@@ -20,19 +22,32 @@ const DEFAULT_HARDNESS := 50.0
 @onready var _unmark_brushable_button: Button = $Margin/VBox/TargetSection/TargetButtons/UnmarkBrushableButton
 @onready var _modifier_option: OptionButton = $Margin/VBox/TargetSection/ModifierRow/ModifierOption
 @onready var _raycast_label: Label = $Margin/VBox/TargetSection/RaycastLabel
+@onready var _show_ghost_check: CheckBox = $Margin/VBox/TargetSection/ShowGhostRow/ShowGhostCheck
+@onready var _mode_option: OptionButton = $Margin/VBox/TargetSection/ModeRow/ModeOption
 
 var _brush_size: float = DEFAULT_SIZE
 var _brush_opacity: float = DEFAULT_OPACITY
 var _brush_hardness: float = DEFAULT_HARDNESS
 var _modifier_mask: int = GodotASketchConstants.DEFAULT_MODIFIER_MASK
+var _show_ghost: bool = GodotASketchConstants.DEFAULT_SHOW_GHOST
+var _brush_mode: int = GodotASketchConstants.BrushMode.PAINT
 var _loading := false
 
 
 func _ready() -> void:
 	_setup_brush_ranges()
 	_setup_modifier_option()
+	_setup_mode_option()
 	_connect_signals()
 	_load_settings()
+
+
+func _setup_mode_option() -> void:
+	_mode_option.clear()
+	_mode_option.add_item("Paint")
+	_mode_option.set_item_metadata(0, GodotASketchConstants.BrushMode.PAINT)
+	_mode_option.add_item("Sculpt")
+	_mode_option.set_item_metadata(1, GodotASketchConstants.BrushMode.SCULPT)
 
 
 func _setup_modifier_option() -> void:
@@ -68,6 +83,8 @@ func _connect_signals() -> void:
 	_mark_brushable_button.pressed.connect(_on_mark_brushable_pressed)
 	_unmark_brushable_button.pressed.connect(_on_unmark_brushable_pressed)
 	_modifier_option.item_selected.connect(_on_modifier_selected)
+	_show_ghost_check.toggled.connect(_on_show_ghost_toggled)
+	_mode_option.item_selected.connect(_on_mode_selected)
 	_size_slider.value_changed.connect(_on_size_slider_changed)
 	_size_spin.value_changed.connect(_on_size_spin_changed)
 	_opacity_slider.value_changed.connect(_on_opacity_changed)
@@ -105,6 +122,20 @@ func _load_settings() -> void:
 	))
 	_select_modifier_option(_modifier_mask)
 
+	_show_ghost = bool(_read_setting(
+		settings,
+		GodotASketchConstants.SETTINGS_SHOW_GHOST,
+		GodotASketchConstants.DEFAULT_SHOW_GHOST
+	))
+	_show_ghost_check.button_pressed = _show_ghost
+
+	_brush_mode = int(_read_setting(
+		settings,
+		GodotASketchConstants.SETTINGS_BRUSH_MODE,
+		GodotASketchConstants.BrushMode.PAINT
+	))
+	_select_mode_option(_brush_mode)
+
 	_loading = false
 
 
@@ -123,6 +154,23 @@ func _save_settings() -> void:
 	settings.set_setting(SETTINGS_PREFIX + "brush/hardness", _brush_hardness)
 	settings.set_setting(SETTINGS_PREFIX + "stack/names", _get_stack_names_packed())
 	settings.set_setting(GodotASketchConstants.SETTINGS_MODIFIER_KEY, _modifier_mask)
+	settings.set_setting(GodotASketchConstants.SETTINGS_SHOW_GHOST, _show_ghost)
+	settings.set_setting(GodotASketchConstants.SETTINGS_BRUSH_MODE, _brush_mode)
+
+
+func _emit_ghost_settings_changed() -> void:
+	if _loading:
+		return
+	ghost_settings_changed.emit()
+
+
+func _select_mode_option(mode: int) -> void:
+	for i in _mode_option.item_count:
+		if int(_mode_option.get_item_metadata(i)) == mode:
+			_mode_option.select(i)
+			return
+	_mode_option.select(0)
+	_brush_mode = int(_mode_option.get_item_metadata(0))
 
 
 func _select_modifier_option(mask: int) -> void:
@@ -157,6 +205,18 @@ func _on_modifier_selected(index: int) -> void:
 	_save_settings()
 
 
+func _on_show_ghost_toggled(enabled: bool) -> void:
+	_show_ghost = enabled
+	_save_settings()
+	_emit_ghost_settings_changed()
+
+
+func _on_mode_selected(index: int) -> void:
+	_brush_mode = int(_mode_option.get_item_metadata(index))
+	_save_settings()
+	_emit_ghost_settings_changed()
+
+
 func _get_selected_node3d() -> Node3D:
 	var nodes := EditorInterface.get_selection().get_selected_nodes()
 	if nodes.is_empty():
@@ -170,10 +230,10 @@ func _get_selected_node3d() -> Node3D:
 func is_raycast_modifier_active(event: InputEvent) -> bool:
 	if not event is InputEventMouse:
 		return false
-	return _is_modifier_held()
+	return is_modifier_held()
 
 
-func _is_modifier_held() -> bool:
+func is_modifier_held() -> bool:
 	if _modifier_mask == GodotASketchConstants.MODIFIER_NONE:
 		return true
 	if _modifier_mask == KEY_MASK_SHIFT:
@@ -200,6 +260,14 @@ func update_raycast_debug_message(message: String) -> void:
 
 func get_modifier_mask() -> int:
 	return _modifier_mask
+
+
+func is_ghost_enabled() -> bool:
+	return _show_ghost
+
+
+func get_brush_mode() -> int:
+	return _brush_mode
 
 
 func _format_vector(pos: Vector3) -> String:
@@ -251,6 +319,7 @@ func _on_size_slider_changed(value: float) -> void:
 		_size_spin.value = value
 	if not _loading:
 		_save_settings()
+		_emit_ghost_settings_changed()
 
 
 func _on_size_spin_changed(value: float) -> void:
@@ -259,6 +328,7 @@ func _on_size_spin_changed(value: float) -> void:
 		_size_slider.value = value
 	if not _loading:
 		_save_settings()
+		_emit_ghost_settings_changed()
 
 
 func _on_opacity_changed(value: float) -> void:
@@ -266,6 +336,7 @@ func _on_opacity_changed(value: float) -> void:
 	_opacity_label.text = "%d%%" % int(value)
 	if not _loading:
 		_save_settings()
+		_emit_ghost_settings_changed()
 
 
 func _on_hardness_changed(value: float) -> void:
@@ -273,17 +344,24 @@ func _on_hardness_changed(value: float) -> void:
 	_hardness_label.text = "%d%%" % int(value)
 	if not _loading:
 		_save_settings()
+		_emit_ghost_settings_changed()
 
 
 func get_brush_size() -> float:
+	if is_node_ready():
+		return float(_size_spin.value)
 	return _brush_size
 
 
 func get_brush_opacity_percent() -> float:
+	if is_node_ready():
+		return float(_opacity_slider.value)
 	return _brush_opacity
 
 
 func get_brush_hardness_percent() -> float:
+	if is_node_ready():
+		return float(_hardness_slider.value)
 	return _brush_hardness
 
 
