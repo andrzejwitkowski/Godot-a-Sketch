@@ -79,7 +79,7 @@ func _apply_appearance(
 	var diameter: float = size / 10.0
 	_mesh_instance.scale = Vector3(diameter, diameter, 1.0)
 
-	var brush_color := GodotASketchConstants.COLOR_PAINT
+	var brush_color: Color = GodotASketchConstants.COLOR_PAINT
 	if mode == GodotASketchConstants.BrushMode.SCULPT:
 		brush_color = GodotASketchConstants.COLOR_SCULPT
 

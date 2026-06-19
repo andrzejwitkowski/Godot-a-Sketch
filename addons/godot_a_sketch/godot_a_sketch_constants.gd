@@ -5,6 +5,7 @@ const PAINT_LAYER := 20
 const PAINT_COLLISION_MASK := 1 << 19
 const BRUSHABLE_META := "godot_a_sketch_brushable"
 const BRUSHABLE_GROUP := "godot_a_sketch_brushable"
+const TRIANGLE_MESH_META := "godot_a_sketch_triangle_mesh"
 const AUTO_BODY_NAME := "_GodotASketchBody"
 const AUTO_BODY_META := "godot_a_sketch_auto_body"
 const SETTINGS_MODIFIER_KEY := "godot_a_sketch/input/modifier_key"

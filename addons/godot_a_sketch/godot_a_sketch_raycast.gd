@@ -62,11 +62,7 @@ static func _mesh_cast(
 		if not Brushable.is_brushable(node):
 			continue
 		var mesh_instance: MeshInstance3D = node as MeshInstance3D
-		var mesh: Mesh = mesh_instance.mesh
-		if mesh == null:
-			continue
-
-		var triangle_mesh: TriangleMesh = mesh.generate_triangle_mesh()
+		var triangle_mesh: TriangleMesh = Brushable.triangle_mesh_for(mesh_instance)
 		if triangle_mesh == null:
 			continue
 

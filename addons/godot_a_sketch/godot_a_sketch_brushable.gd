@@ -20,6 +20,7 @@ static func mark(node: Node3D) -> String:
 
 	mesh.set_meta(Constants.BRUSHABLE_META, true)
 	mesh.add_to_group(Constants.BRUSHABLE_GROUP)
+	_cache_triangle_mesh(mesh)
 	_sync_paint_body(mesh)
 	return ""
 
@@ -32,6 +33,8 @@ static func unmark(node: Node3D) -> String:
 	mesh.remove_from_group(Constants.BRUSHABLE_GROUP)
 	if mesh.has_meta(Constants.BRUSHABLE_META):
 		mesh.remove_meta(Constants.BRUSHABLE_META)
+	if mesh.has_meta(Constants.TRIANGLE_MESH_META):
+		mesh.remove_meta(Constants.TRIANGLE_MESH_META)
 
 	if mesh.has_meta(Constants.AUTO_BODY_META) and mesh.get_meta(Constants.AUTO_BODY_META):
 		var auto_body := mesh.get_node_or_null(Constants.AUTO_BODY_NAME)
@@ -61,6 +64,22 @@ static func find_brushable_ancestor(node: Node) -> Node3D:
 			return current
 		current = current.get_parent()
 	return null
+
+
+static func triangle_mesh_for(mesh_instance: MeshInstance3D) -> TriangleMesh:
+	if mesh_instance.has_meta(Constants.TRIANGLE_MESH_META):
+		return mesh_instance.get_meta(Constants.TRIANGLE_MESH_META)
+	return _cache_triangle_mesh(mesh_instance)
+
+
+static func _cache_triangle_mesh(mesh_instance: MeshInstance3D) -> TriangleMesh:
+	if mesh_instance.mesh == null:
+		return null
+	var triangle_mesh: TriangleMesh = mesh_instance.mesh.generate_triangle_mesh()
+	if triangle_mesh == null:
+		return null
+	mesh_instance.set_meta(Constants.TRIANGLE_MESH_META, triangle_mesh)
+	return triangle_mesh
 
 
 static func _resolve_mesh(node: Node3D) -> MeshInstance3D:
