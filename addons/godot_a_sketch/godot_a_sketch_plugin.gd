@@ -55,6 +55,9 @@ func _handles(object: Object) -> bool:
 
 
 func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
+	if event is InputEventMouseButton:
+		_update_input_state(event as InputEventMouseButton)
+
 	var root := get_editor_interface().get_edited_scene_root()
 	if root == null or _dock_panel == null:
 		_hide_ghost()
@@ -69,7 +72,6 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 			_input_dragging = true
 		_cast_and_update_debug(camera, event.position, root)
 	elif event is InputEventMouseButton:
-		_update_input_state(event as InputEventMouseButton)
 		_cast_and_update_debug(camera, event.position, root)
 
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
@@ -105,7 +107,8 @@ func _on_ghost_settings_changed() -> void:
 	if not _dock_panel.is_ghost_enabled() or _last_hit.is_empty():
 		_hide_ghost()
 		return
-	_ghost.update_appearance(
+	_ghost.update_from_hit(
+		_last_hit,
 		_dock_panel.get_brush_size(),
 		_dock_panel.get_brush_opacity_percent(),
 		_dock_panel.get_brush_hardness_percent(),

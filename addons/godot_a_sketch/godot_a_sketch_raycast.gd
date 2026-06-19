@@ -68,8 +68,8 @@ static func _mesh_cast(
 
 		var xf_inv: Transform3D = mesh_instance.global_transform.affine_inverse()
 		var local_origin: Vector3 = xf_inv * origin
-		var local_direction: Vector3 = (xf_inv.basis * direction).normalized()
-		var local_end: Vector3 = local_origin + local_direction * max_distance
+		var world_end: Vector3 = origin + direction * max_distance
+		var local_end: Vector3 = xf_inv * world_end
 		var local_hit: Dictionary = triangle_mesh.intersect_segment(local_origin, local_end)
 		if local_hit.is_empty():
 			continue

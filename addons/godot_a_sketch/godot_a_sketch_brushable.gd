@@ -148,7 +148,5 @@ static func _shape_for_mesh(mesh: Mesh) -> Shape3D:
 static func _sync_paint_body(mesh: MeshInstance3D) -> void:
 	var body := mesh.get_node_or_null(Constants.AUTO_BODY_NAME) as CollisionObject3D
 	if body == null:
-		body = _find_paint_body(mesh)
-	if body == null:
 		return
 	body.global_transform = mesh.global_transform
