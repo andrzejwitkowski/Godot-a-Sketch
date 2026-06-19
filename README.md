@@ -45,3 +45,14 @@ After enabling the plugin, the **Godot-a-Sketch** dock appears on the left side 
 5. Use **Unmark** to remove brushable metadata and auto-created collision bodies.
 
 Set **Modifier** to **Shift**, **Alt**, or **Ctrl** if you only want raycast while holding that key. The choice persists across editor restarts.
+
+## Ghost Brush
+
+1. Enable **Show Ghost Brush** in the dock **Target** section.
+2. Mark a mesh brushable and move the mouse in the 3D viewport (same raycast rules as above).
+3. A shader disc preview appears on the surface at the hit point.
+4. **Size** sets the disc diameter in world units (slider value ÷ 10).
+5. **Opacity** and **Hardness** adjust the preview falloff; **Mode** switches color between **Paint** (blue) and **Sculpt** (orange). Sculpt mode is visual-only until sculpting lands in a later issue.
+6. Disable **Show Ghost Brush** to hide the preview.
+
+The ghost node is editor-only and is not intended to be saved with the scene.

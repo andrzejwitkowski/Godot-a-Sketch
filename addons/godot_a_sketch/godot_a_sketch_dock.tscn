@@ -97,6 +97,28 @@ layout_mode = 2
 text = "No hit"
 autowrap_mode = 3
 
+[node name="ShowGhostRow" type="HBoxContainer" parent="Margin/VBox/TargetSection"]
+layout_mode = 2
+
+[node name="ShowGhostCheck" type="CheckBox" parent="Margin/VBox/TargetSection/ShowGhostRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+button_pressed = true
+text = "Show Ghost Brush"
+
+[node name="ModeRow" type="HBoxContainer" parent="Margin/VBox/TargetSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ModeCaption" type="Label" parent="Margin/VBox/TargetSection/ModeRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "Mode"
+
+[node name="ModeOption" type="OptionButton" parent="Margin/VBox/TargetSection/ModeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="Separator2" type="HSeparator" parent="Margin/VBox"]
 layout_mode = 2
 
