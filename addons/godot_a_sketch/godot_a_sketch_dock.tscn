@@ -1,0 +1,133 @@
+[gd_scene load_steps=2 format=3 uid="uid://bqx7godotasketchdock"]
+
+[ext_resource type="Script" path="res://addons/godot_a_sketch/godot_a_sketch_dock.gd" id="1_dock"]
+
+[node name="GodotASketchDock" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_dock")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 8
+
+[node name="VBox" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StackSection" type="VBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="StackLabel" type="Label" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+text = "Shader Stack"
+
+[node name="StackList" type="ItemList" parent="Margin/VBox/StackSection"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="StackButtons" type="HBoxContainer" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="AddButton" type="Button" parent="Margin/VBox/StackSection/StackButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Add"
+
+[node name="RemoveButton" type="Button" parent="Margin/VBox/StackSection/StackButtons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Remove"
+
+[node name="Separator" type="HSeparator" parent="Margin/VBox"]
+layout_mode = 2
+
+[node name="BrushSection" type="VBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BrushLabel" type="Label" parent="Margin/VBox/BrushSection"]
+layout_mode = 2
+text = "Brush"
+
+[node name="SizeRow" type="HBoxContainer" parent="Margin/VBox/BrushSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="SizeCaption" type="Label" parent="Margin/VBox/BrushSection/SizeRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "Size"
+
+[node name="SizeSlider" type="HSlider" parent="Margin/VBox/BrushSection/SizeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 256.0
+step = 1.0
+value = 32.0
+
+[node name="SizeSpin" type="SpinBox" parent="Margin/VBox/BrushSection/SizeRow"]
+custom_minimum_size = Vector2(64, 0)
+layout_mode = 2
+min_value = 1.0
+max_value = 256.0
+step = 1.0
+value = 32.0
+
+[node name="OpacityRow" type="HBoxContainer" parent="Margin/VBox/BrushSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="OpacityCaption" type="Label" parent="Margin/VBox/BrushSection/OpacityRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "Opacity"
+
+[node name="OpacitySlider" type="HSlider" parent="Margin/VBox/BrushSection/OpacityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+step = 1.0
+value = 100.0
+
+[node name="OpacityLabel" type="Label" parent="Margin/VBox/BrushSection/OpacityRow"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+text = "100%"
+
+[node name="HardnessRow" type="HBoxContainer" parent="Margin/VBox/BrushSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="HardnessCaption" type="Label" parent="Margin/VBox/BrushSection/HardnessRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "Hardness"
+
+[node name="HardnessSlider" type="HSlider" parent="Margin/VBox/BrushSection/HardnessRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+max_value = 100.0
+step = 1.0
+value = 50.0
+
+[node name="HardnessLabel" type="Label" parent="Margin/VBox/BrushSection/HardnessRow"]
+custom_minimum_size = Vector2(40, 0)
+layout_mode = 2
+text = "50%"
