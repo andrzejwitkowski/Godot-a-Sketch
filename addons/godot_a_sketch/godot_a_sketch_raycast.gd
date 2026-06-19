@@ -98,7 +98,7 @@ static func _with_brushable(result: Dictionary) -> Dictionary:
 	if collider == null or not (collider is Node):
 		return {}
 
-	var brushable: Node3D = Brushable.find_brushable_ancestor(collider as Node)
+	var brushable: Node3D = Brushable.find_brushable_for_collider(collider as Node)
 	if brushable == null:
 		return {}
 

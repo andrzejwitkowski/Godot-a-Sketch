@@ -22,3 +22,10 @@ enum BrushMode { PAINT, SCULPT }
 
 const COLOR_PAINT := Color(0.2, 0.6, 1.0, 0.5)
 const COLOR_SCULPT := Color(1.0, 0.55, 0.15, 0.5)
+
+const SHADER_STACK_META := "godot_a_sketch_shader_stack_path"
+const SHADER_STACK_DEFAULT_DIR := "res://godot_a_sketch_stacks/"
+const BUNDLED_SHADER_DIR := "res://addons/godot_a_sketch/shaders/"
+const LAYER_TEMPLATE_PATH := "res://addons/godot_a_sketch/shaders/layer_template.gdshader"
+const SETTINGS_STACK_LEGACY_NAMES := "godot_a_sketch/stack/names"
+const SETTINGS_STACK_MIGRATED := "godot_a_sketch/stack/migrated_v5"

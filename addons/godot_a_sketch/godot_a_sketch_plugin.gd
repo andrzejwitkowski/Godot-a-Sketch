@@ -6,6 +6,7 @@ const AUTOLOAD_PATH := "res://addons/godot_a_sketch/godot_a_sketch_autoload.gd"
 
 const GhostBrushScript := preload("res://addons/godot_a_sketch/godot_a_sketch_ghost_brush.gd")
 const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants.gd")
+const ShaderValidator := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_validator.gd")
 
 var _dock: EditorDock
 var _dock_panel: Control
@@ -28,6 +29,11 @@ func _enter_tree() -> void:
 	add_dock(_dock)
 	set_input_event_forwarding_always_enabled()
 
+	var template: Shader = load(Constants.LAYER_TEMPLATE_PATH) as Shader
+	assert(template != null and ShaderValidator.is_layer_shader(template))
+	var selection := get_editor_interface().get_selection()
+	selection.selection_changed.connect(_on_selection_changed)
+
 	_ghost = GhostBrushScript.new()
 	_ghost.name = Constants.GHOST_NODE_NAME
 	scene_changed.connect(_on_scene_changed)
@@ -35,6 +41,9 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	var selection := get_editor_interface().get_selection()
+	if selection.selection_changed.is_connected(_on_selection_changed):
+		selection.selection_changed.disconnect(_on_selection_changed)
 	if scene_changed.is_connected(_on_scene_changed):
 		scene_changed.disconnect(_on_scene_changed)
 	if _ghost:
@@ -99,6 +108,13 @@ func _is_raycast_active() -> bool:
 
 func _on_scene_changed(_scene_root: Node) -> void:
 	_attach_ghost_to_edited_scene()
+	if _dock_panel:
+		_dock_panel.refresh_shader_stack_ui()
+
+
+func _on_selection_changed() -> void:
+	if _dock_panel:
+		_dock_panel.refresh_shader_stack_ui()
 
 
 func _on_ghost_settings_changed() -> void:
