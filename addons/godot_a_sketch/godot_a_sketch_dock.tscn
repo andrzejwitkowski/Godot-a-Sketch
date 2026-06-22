@@ -35,16 +35,61 @@ theme_override_constants/separation = 4
 layout_mode = 2
 text = "Shader Stack"
 
+[node name="StackHintLabel" type="Label" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+text = "Select a brushable MeshInstance3D"
+autowrap_mode = 3
+
+[node name="StackCatalogRow" type="HBoxContainer" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="RefreshButton" type="Button" parent="Margin/VBox/StackSection/StackCatalogRow"]
+layout_mode = 2
+text = "Refresh"
+
+[node name="CatalogCountLabel" type="Label" parent="Margin/VBox/StackSection/StackCatalogRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "0 shaders"
+
+[node name="ShaderCatalogLabel" type="Label" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+text = "Available shaders (double-click to add layer)"
+
+[node name="ShaderCatalogList" type="ItemList" parent="Margin/VBox/StackSection"]
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+
+[node name="AddLayerContractButton" type="Button" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+text = "Insert layer contract include"
+visible = false
+
+[node name="StackLayersLabel" type="Label" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+text = "Stack layers"
+
 [node name="StackList" type="ItemList" parent="Margin/VBox/StackSection"]
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 size_flags_vertical = 3
 
+[node name="SplatPreviewLabel" type="Label" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+text = "Splat mask preview"
+
+[node name="SplatPreview" type="TextureRect" parent="Margin/VBox/StackSection"]
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
 [node name="StackButtons" type="HBoxContainer" parent="Margin/VBox/StackSection"]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="AddButton" type="Button" parent="Margin/VBox/StackSection/StackButtons"]
+[node name="AddMenuButton" type="MenuButton" parent="Margin/VBox/StackSection/StackButtons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Add"
@@ -53,6 +98,28 @@ text = "Add"
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Remove"
+
+[node name="UpButton" type="Button" parent="Margin/VBox/StackSection/StackButtons"]
+layout_mode = 2
+text = "Up"
+
+[node name="DownButton" type="Button" parent="Margin/VBox/StackSection/StackButtons"]
+layout_mode = 2
+text = "Down"
+
+[node name="StackButtons2" type="HBoxContainer" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="CopyStackButton" type="Button" parent="Margin/VBox/StackSection/StackButtons2"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Copy stack"
+
+[node name="PasteStackButton" type="Button" parent="Margin/VBox/StackSection/StackButtons2"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Paste stack"
 
 [node name="Separator" type="HSeparator" parent="Margin/VBox"]
 layout_mode = 2
@@ -86,7 +153,7 @@ theme_override_constants/separation = 4
 [node name="ModifierCaption" type="Label" parent="Margin/VBox/TargetSection/ModifierRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
-text = "Modifier"
+text = "Raycast mod."
 
 [node name="ModifierOption" type="OptionButton" parent="Margin/VBox/TargetSection/ModifierRow"]
 layout_mode = 2
@@ -95,6 +162,11 @@ size_flags_horizontal = 3
 [node name="RaycastLabel" type="Label" parent="Margin/VBox/TargetSection"]
 layout_mode = 2
 text = "No hit"
+autowrap_mode = 3
+
+[node name="StatusLabel" type="Label" parent="Margin/VBox/TargetSection"]
+layout_mode = 2
+text = ""
 autowrap_mode = 3
 
 [node name="ShowGhostRow" type="HBoxContainer" parent="Margin/VBox/TargetSection"]
