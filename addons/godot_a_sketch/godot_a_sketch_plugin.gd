@@ -153,6 +153,9 @@ func _handle_paint_press(camera: Camera3D, screen_pos: Vector2, root: Node) -> v
 		return
 	_paint_last_uv = hit.uv
 	_paint_session.begin_stroke(mesh)
+	if not _paint_session.is_painting():
+		_dock_panel.set_status("Could not open splat map — check Output panel")
+		return
 	if hit.get("uv_planar_fallback"):
 		_dock_panel.set_status("Painting with planar UV (no TEX_UV on mesh)")
 	_paint_session.stamp_line(
@@ -164,8 +167,7 @@ func _handle_paint_press(camera: Camera3D, screen_pos: Vector2, root: Node) -> v
 		_dock_panel.get_brush_hardness_percent(),
 		layer
 	)
-	_paint_session.sync_preview(mesh)
-	_dock_panel.set_splat_preview_texture(_paint_session.preview_texture(mesh))
+	_dock_panel.refresh_splat_preview(mesh)
 	_dock_panel.update_paint_target_label(layer)
 
 
@@ -201,7 +203,6 @@ func _handle_paint_release() -> void:
 	if mesh:
 		Brushable.refresh_splat_on_mesh(mesh)
 	if _dock_panel:
-		_paint_session.sync_preview(mesh)
 		_dock_panel.refresh_splat_preview(mesh)
 
 

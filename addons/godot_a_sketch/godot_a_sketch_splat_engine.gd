@@ -2,20 +2,15 @@ extends RefCounted
 class_name GodotASketchSplatEngine
 
 var _map: GodotASketchSplatMap
-var _preview_tex: ImageTexture
 var _painting := false
-
-
-func open(map) -> void:
-	ensure_open(map)
 
 
 func ensure_open(map) -> void:
 	if map == null:
 		return
-	if _map == map and _preview_tex != null:
+	if _map == map:
 		return
-	_bind_map(map)
+	_map = map
 
 
 func begin_paint() -> void:
@@ -24,7 +19,6 @@ func begin_paint() -> void:
 
 func end_paint() -> void:
 	_painting = false
-	sync_preview()
 
 
 func is_painting() -> bool:
@@ -46,25 +40,6 @@ func stamp(
 	if _map == null or _map.image == null:
 		return
 	_paint_stamp(_map.image, uv, radius, strength, hardness, channel, blend_mode)
-
-
-func sync_preview() -> void:
-	if _map == null or _map.image == null:
-		return
-	_map.ensure_rgba8()
-	var display: ImageTexture = _map.to_preview_texture()
-	if display == null:
-		return
-	_preview_tex = display
-
-
-func get_texture() -> Texture2D:
-	return _preview_tex
-
-
-func _bind_map(map) -> void:
-	_map = map
-	_preview_tex = map.to_texture()
 
 
 func _paint_stamp(

@@ -14,12 +14,13 @@ var _painting := false
 func begin_stroke(mesh: MeshInstance3D) -> void:
 	if mesh == null:
 		return
+	var map: GodotASketchSplatMap = SplatMapAssign.begin_edit(mesh)
+	if map == null:
+		return
 	_active_mesh = mesh
 	_painting = true
 	var engine := _engine_for(mesh)
-	var map: GodotASketchSplatMap = SplatMapAssign.begin_edit(mesh)
-	if map:
-		engine.ensure_open(map)
+	engine.ensure_open(map)
 	engine.begin_paint()
 
 
@@ -74,26 +75,8 @@ func stamp_line(
 		engine.stamp(from_uv.lerp(to_uv, t), radius, strength, hardness, channel, blend)
 
 
-func preview_texture(mesh: MeshInstance3D) -> Texture2D:
-	if mesh == null:
-		return null
-	var engine: GodotASketchSplatEngine = _engines.get(mesh.get_instance_id()) as GodotASketchSplatEngine
-	if engine:
-		var live := engine.get_texture()
-		if live:
-			return live
-	var map: GodotASketchSplatMap = SplatMapAssign.load_map(mesh)
-	return map.to_texture() if map else null
-
-
 func is_painting() -> bool:
 	return _painting
-
-
-func sync_preview(mesh: MeshInstance3D) -> void:
-	var engine: GodotASketchSplatEngine = _engines.get(mesh.get_instance_id()) as GodotASketchSplatEngine
-	if engine:
-		engine.sync_preview()
 
 
 func _engine_for(mesh: MeshInstance3D) -> GodotASketchSplatEngine:

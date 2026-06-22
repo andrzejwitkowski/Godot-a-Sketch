@@ -112,7 +112,6 @@ static func apply_layer_to_mesh(mesh: MeshInstance3D, layer) -> void:
 	if mesh == null or layer == null or layer.shader == null:
 		return
 	var shader_mat := ensure_shader_material(mesh)
-	# ponytail: mesh preview uses bundled layer_template until #8 stack compositor
 	var preview_shader: Shader = load(Constants.LAYER_TEMPLATE_PATH) as Shader
 	if preview_shader:
 		shader_mat.shader = preview_shader

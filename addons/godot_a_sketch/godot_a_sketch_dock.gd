@@ -246,7 +246,6 @@ func refresh_shader_stack_ui() -> void:
 	if not GodotASketchBrushable.is_brushable(mesh):
 		_stack_hint.text = "%s — click Mark Brushable to paint" % mesh.name
 		refresh_splat_preview(null)
-		# ponytail: stack layers can be set up before marking brushable
 		var stack_early := ShaderStackAssign.load_stack(mesh)
 		if stack_early:
 			for layer in stack_early.layers:
@@ -345,12 +344,6 @@ func refresh_splat_preview(mesh: MeshInstance3D = null) -> void:
 	_splat_preview.texture = map.to_preview_texture(channel)
 
 
-func set_splat_preview_texture(tex: Texture2D) -> void:
-	if _splat_preview:
-		_splat_preview.texture = null
-		_splat_preview.texture = tex
-
-
 func update_paint_target_label(layer: GodotASketchShaderStackLayer) -> void:
 	if layer == null:
 		return
@@ -361,6 +354,7 @@ func update_paint_target_label(layer: GodotASketchShaderStackLayer) -> void:
 func _on_stack_layer_selected(_index: int) -> void:
 	if _target_mesh == null:
 		return
+	refresh_splat_preview(_target_mesh)
 	var layer := get_active_stack_layer(_target_mesh)
 	if layer:
 		update_paint_target_label(layer)

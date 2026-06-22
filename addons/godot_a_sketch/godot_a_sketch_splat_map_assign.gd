@@ -5,7 +5,6 @@ class_name GodotASketchSplatMapAssign
 const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants.gd")
 const SplatMap := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_map.gd")
 
-# ponytail: in-memory map while painting — load_map must not run every mouse move
 static var _working: Dictionary = {}
 
 
@@ -36,22 +35,30 @@ static func working_map(mesh: MeshInstance3D) -> GodotASketchSplatMap:
 
 
 static func begin_edit(mesh: MeshInstance3D) -> GodotASketchSplatMap:
+	if mesh == null:
+		return null
 	var map := load_map(mesh)
 	if map == null:
 		map = SplatMap.create_default(default_resolution())
-		assign_map(mesh, map)
+		if assign_map(mesh, map) != "":
+			return null
 	map.ensure_rgba8()
 	_working[mesh.get_instance_id()] = map
 	return map
 
 
 static func commit_edit(mesh: MeshInstance3D) -> GodotASketchSplatMap:
-	var map: GodotASketchSplatMap = _working.get(mesh.get_instance_id())
-	if map:
-		assign_map(mesh, map)
-		_working.erase(mesh.get_instance_id())
+	if mesh == null:
+		return null
+	var id := mesh.get_instance_id()
+	var map: GodotASketchSplatMap = _working.get(id)
+	if map == null:
+		return load_map(mesh)
+	if assign_map(mesh, map) != "":
+		push_warning("Godot-a-Sketch: splat map save failed — stroke kept in memory")
 		return map
-	return load_map(mesh)
+	_working.erase(id)
+	return map
 
 
 static func default_resolution() -> int:
