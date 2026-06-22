@@ -9,6 +9,8 @@ const ShaderValidator := preload("res://addons/godot_a_sketch/godot_a_sketch_sha
 
 
 func add_layer(layer) -> void:
+	if layer == null:
+		return
 	layer.order = layers.size()
 	layers.append(layer)
 	_sync_order()
@@ -42,6 +44,9 @@ func validate() -> PackedStringArray:
 	var errors := PackedStringArray()
 	for i in layers.size():
 		var layer = layers[i]
+		if layer == null:
+			errors.append("Layer %d: layer resource is null" % i)
+			continue
 		if layer.shader == null:
 			continue
 		if not ShaderValidator.is_layer_shader(layer.shader):
@@ -54,4 +59,5 @@ func validate() -> PackedStringArray:
 
 func _sync_order() -> void:
 	for i in layers.size():
-		layers[i].order = i
+		if layers[i] != null:
+			layers[i].order = i

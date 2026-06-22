@@ -62,7 +62,9 @@ static func shader_from_mesh(mesh: MeshInstance3D) -> Shader:
 		return null
 	var override_mat := mesh.material_override
 	if override_mat is ShaderMaterial:
-		return (override_mat as ShaderMaterial).shader
+		var override_shader: Shader = (override_mat as ShaderMaterial).shader
+		if override_shader:
+			return override_shader
 	for i in mesh.get_surface_override_material_count():
 		var surf := mesh.get_surface_override_material(i)
 		if surf is ShaderMaterial:

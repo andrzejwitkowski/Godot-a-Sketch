@@ -293,10 +293,16 @@ func _maybe_apply_legacy_migration(mesh: MeshInstance3D) -> void:
 		_finish_migration()
 		return
 	var stack := ShaderStack.new()
-	for layer_name in _pending_legacy_names:
+	for i in range(mini(_pending_legacy_names.size(), MAX_STACK_LAYERS)):
+		var layer_name := _pending_legacy_names[i]
 		var layer := ShaderStackLayer.new()
 		layer.display_name = "%s (legacy)" % layer_name
+		layer.mask_channel = i
 		stack.add_layer(layer)
+	if _pending_legacy_names.size() > MAX_STACK_LAYERS:
+		set_status(
+			"Legacy stack had more than %d layers; extra layers were skipped" % MAX_STACK_LAYERS
+		)
 	var err := ShaderStackAssign.assign_stack(mesh, stack)
 	if err != "":
 		set_status(err)
@@ -578,9 +584,11 @@ func _on_template_saved(path: String) -> void:
 	dst.close()
 	EditorInterface.get_resource_filesystem().scan()
 	var shader: Shader = load(path) as Shader
+	if shader == null:
+		set_status("Template saved, but the shader could not be loaded")
+		return
 	EditorInterface.edit_resource(shader)
-	if shader:
-		_add_layer_from_shader(shader, path.get_file().get_basename())
+	_add_layer_from_shader(shader, path.get_file().get_basename())
 
 
 func _add_layer_from_selected_mesh() -> void:

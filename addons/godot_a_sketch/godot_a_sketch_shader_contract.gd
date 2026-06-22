@@ -106,7 +106,9 @@ static func _declares_any_required_uniform(source: String) -> bool:
 
 
 static func _line_declares_name(line: String, uniform_name: String) -> bool:
-	for token in line.split(" ", false):
-		if token.strip_edges().trim_suffix(";") == uniform_name:
+	var normalized := line.replace("\t", " ")
+	for token in normalized.split(" ", false):
+		var clean := token.strip_edges().trim_suffix(";").trim_suffix(",")
+		if clean == uniform_name:
 			return true
 	return false

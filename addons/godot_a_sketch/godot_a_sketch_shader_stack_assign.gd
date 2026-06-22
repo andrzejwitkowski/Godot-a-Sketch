@@ -37,6 +37,8 @@ static func assign_stack(mesh: MeshInstance3D, stack: GodotASketchShaderStack, p
 		path = stack_path(mesh)
 	if path.is_empty() or not Constants.is_usable_resource_path(path):
 		path = _default_path(mesh)
+	if ResourceLoader.exists(path) and not ResourceLoader.exists(path, "GodotASketchShaderStack"):
+		return "Refusing to overwrite non-stack resource at %s" % path
 	var err := _ensure_parent_dir(path)
 	if err != "":
 		return err

@@ -68,6 +68,8 @@ static func assign_map(mesh: MeshInstance3D, map: GodotASketchSplatMap, path: St
 		path = map_path(mesh)
 	if path.is_empty() or not Constants.is_usable_resource_path(path):
 		path = _default_path(mesh)
+	if ResourceLoader.exists(path) and not ResourceLoader.exists(path, "GodotASketchSplatMap"):
+		return "Refusing to overwrite non-splat resource at %s" % path
 	var err := _ensure_parent_dir(path)
 	if err != "":
 		return err
