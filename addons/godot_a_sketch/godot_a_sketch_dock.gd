@@ -12,7 +12,12 @@ const MAX_STACK_LAYERS := 4
 const MENU_FROM_MESH := 0
 const MENU_BROWSE := 1
 const MENU_TEMPLATE := 2
+const MENU_TEMPLATE_LAYER := 3
 const _MASK_CHANNELS := ["R", "G", "B", "A"]
+const SplatMapAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_map_assign.gd")
+const ShaderStackAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack_assign.gd")
+const ShaderStack := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack.gd")
+const ShaderStackLayer := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack_layer.gd")
 
 @onready var _stack_hint: Label = $Margin/VBox/StackSection/StackHintLabel
 @onready var _refresh_button: Button = $Margin/VBox/StackSection/StackCatalogRow/RefreshButton
@@ -20,6 +25,8 @@ const _MASK_CHANNELS := ["R", "G", "B", "A"]
 @onready var _shader_catalog_list: ItemList = $Margin/VBox/StackSection/ShaderCatalogList
 @onready var _add_layer_contract_button: Button = $Margin/VBox/StackSection/AddLayerContractButton
 @onready var _stack_list: ItemList = $Margin/VBox/StackSection/StackList
+@onready var _splat_preview_label: Label = $Margin/VBox/StackSection/SplatPreviewLabel
+@onready var _splat_preview: TextureRect = $Margin/VBox/StackSection/SplatPreview
 @onready var _add_menu: MenuButton = $Margin/VBox/StackSection/StackButtons/AddMenuButton
 @onready var _remove_button: Button = $Margin/VBox/StackSection/StackButtons/RemoveButton
 @onready var _up_button: Button = $Margin/VBox/StackSection/StackButtons/UpButton
@@ -48,6 +55,7 @@ var _show_ghost: bool = GodotASketchConstants.DEFAULT_SHOW_GHOST
 var _brush_mode: int = GodotASketchConstants.BrushMode.PAINT
 var _loading := false
 var _target_mesh: MeshInstance3D
+var _context_mesh: MeshInstance3D
 var _pending_legacy_names: PackedStringArray = PackedStringArray()
 var _stack_clipboard: GodotASketchShaderStack
 var _selected_catalog_entry: GodotASketchShaderCatalogEntry
@@ -78,6 +86,8 @@ func refresh_shader_catalog(probe_shaders: bool = false) -> void:
 
 func _setup_add_menu() -> void:
 	var popup := _add_menu.get_popup()
+	popup.add_item("Template layer (quick start)", MENU_TEMPLATE_LAYER)
+	popup.add_separator()
 	popup.add_item("From selected mesh", MENU_FROM_MESH)
 	popup.add_item("Browse shader…", MENU_BROWSE)
 	popup.add_item("New from template…", MENU_TEMPLATE)
@@ -140,6 +150,7 @@ func _connect_signals() -> void:
 	_shader_catalog_list.item_selected.connect(_on_shader_catalog_selected)
 	_shader_catalog_list.item_activated.connect(_on_shader_catalog_activated)
 	_add_layer_contract_button.pressed.connect(_on_add_layer_contract_pressed)
+	_stack_list.item_selected.connect(_on_stack_layer_selected)
 	_remove_button.pressed.connect(_on_remove_layer_pressed)
 	_up_button.pressed.connect(_on_move_layer_up)
 	_down_button.pressed.connect(_on_move_layer_down)
@@ -212,30 +223,57 @@ func _save_settings() -> void:
 	settings.set_setting(GodotASketchConstants.SETTINGS_BRUSH_MODE, _brush_mode)
 
 
+func set_context_mesh(mesh: MeshInstance3D) -> void:
+	if mesh == _context_mesh:
+		return
+	_context_mesh = mesh
+	if is_node_ready():
+		refresh_shader_stack_ui()
+
+
 func refresh_shader_stack_ui() -> void:
 	if not is_node_ready():
 		return
 	_stack_list.clear()
-	var mesh := _get_selected_mesh_instance()
-	_target_mesh = mesh if mesh != null and GodotASketchBrushable.is_brushable(mesh) else null
-	_update_mark_buttons(mesh)
-	_set_stack_controls_enabled(_target_mesh != null)
+	var mesh := _resolve_target_mesh()
+	var selected := _get_selected_mesh_instance()
+	_target_mesh = mesh
+	_update_mark_buttons(selected if selected else mesh)
+	_set_stack_controls_enabled(mesh != null)
 	if mesh == null:
-		_stack_hint.text = "Select a MeshInstance3D"
+		_stack_hint.text = "Select a MeshInstance3D, or hover one in the 3D view"
 		return
 	if not GodotASketchBrushable.is_brushable(mesh):
-		_stack_hint.text = "%s — click Mark Brushable" % mesh.name
+		_stack_hint.text = "%s — click Mark Brushable to paint" % mesh.name
+		refresh_splat_preview(null)
+		# ponytail: stack layers can be set up before marking brushable
+		var stack_early := ShaderStackAssign.load_stack(mesh)
+		if stack_early:
+			for layer in stack_early.layers:
+				_stack_list.add_item(_layer_list_text(layer))
+			if _stack_list.item_count > 0 and _stack_list.get_selected_items().is_empty():
+				_stack_list.select(0)
 		return
 	_maybe_apply_legacy_migration(_target_mesh)
-	var stack := GodotASketchShaderStackAssign.load_stack(_target_mesh)
+	var stack := ShaderStackAssign.load_stack(_target_mesh)
 	_copy_stack_button.disabled = stack == null
 	_paste_stack_button.disabled = _stack_clipboard == null
 	if stack == null:
-		_stack_hint.text = "%s — no stack yet (Add a layer)" % _target_mesh.name
+		_stack_hint.text = (
+			"%s — add a stack layer to paint (Add → template layer, or double-click a shader below)"
+			% _target_mesh.name
+		)
+		refresh_splat_preview(_target_mesh)
 		return
-	_stack_hint.text = "%s  (%s)" % [_target_mesh.name, GodotASketchShaderStackAssign.stack_path(_target_mesh)]
+	_stack_hint.text = "%s  (%s)" % [_target_mesh.name, ShaderStackAssign.stack_path(_target_mesh)]
 	for layer in stack.layers:
 		_stack_list.add_item(_layer_list_text(layer))
+	if _stack_list.item_count > 0 and _stack_list.get_selected_items().is_empty():
+		_stack_list.select(0)
+	refresh_splat_preview(_target_mesh)
+	var active := get_active_stack_layer(_target_mesh)
+	if active:
+		update_paint_target_label(active)
 
 
 func _set_stack_controls_enabled(enabled: bool) -> void:
@@ -251,15 +289,15 @@ func _set_stack_controls_enabled(enabled: bool) -> void:
 func _maybe_apply_legacy_migration(mesh: MeshInstance3D) -> void:
 	if _pending_legacy_names.is_empty():
 		return
-	if GodotASketchShaderStackAssign.load_stack(mesh) != null:
+	if ShaderStackAssign.load_stack(mesh) != null:
 		_finish_migration()
 		return
-	var stack := GodotASketchShaderStack.new()
+	var stack := ShaderStack.new()
 	for layer_name in _pending_legacy_names:
-		var layer := GodotASketchShaderStackLayer.new()
+		var layer := ShaderStackLayer.new()
 		layer.display_name = "%s (legacy)" % layer_name
 		stack.add_layer(layer)
-	var err := GodotASketchShaderStackAssign.assign_stack(mesh, stack)
+	var err := ShaderStackAssign.assign_stack(mesh, stack)
 	if err != "":
 		set_status(err)
 		return
@@ -267,9 +305,79 @@ func _maybe_apply_legacy_migration(mesh: MeshInstance3D) -> void:
 	set_status("Migrated legacy layer names — assign shaders to each layer")
 
 
+func get_active_stack_layer(mesh: MeshInstance3D) -> GodotASketchShaderStackLayer:
+	if mesh == null:
+		return null
+	var stack := ShaderStackAssign.load_stack(mesh)
+	if stack == null or stack.layers.is_empty():
+		return null
+	if mesh == _target_mesh:
+		var selected := _stack_list.get_selected_items()
+		if not selected.is_empty():
+			var idx: int = selected[0]
+			if idx >= 0 and idx < stack.layers.size():
+				return stack.layers[idx]
+	return stack.layers[0]
+
+
+func refresh_splat_preview(mesh: MeshInstance3D = null) -> void:
+	if not is_node_ready():
+		return
+	if mesh == null:
+		mesh = _target_mesh
+	if mesh == null:
+		_splat_preview.texture = null
+		return
+	var map: GodotASketchSplatMap = SplatMapAssign.working_map(mesh)
+	if map == null:
+		map = SplatMapAssign.load_map(mesh)
+	if map == null:
+		_splat_preview.texture = null
+		return
+	var layer := get_active_stack_layer(mesh)
+	var channel := layer.mask_channel if layer else -1
+	_splat_preview.texture = map.to_preview_texture(channel)
+
+
+func set_splat_preview_texture(tex: Texture2D) -> void:
+	if _splat_preview:
+		_splat_preview.texture = null
+		_splat_preview.texture = tex
+
+
+func update_paint_target_label(layer: GodotASketchShaderStackLayer) -> void:
+	if layer == null:
+		return
+	var channel: String = _MASK_CHANNELS[clampi(layer.mask_channel, 0, 3)]
+	set_status("Paint target: %s (%s)" % [layer.display_name, channel])
+
+
+func _on_stack_layer_selected(_index: int) -> void:
+	if _target_mesh == null:
+		return
+	var layer := get_active_stack_layer(_target_mesh)
+	if layer:
+		update_paint_target_label(layer)
+
+
+func _resolve_target_mesh() -> MeshInstance3D:
+	var selected := _get_selected_mesh_instance()
+	if selected:
+		return selected
+	return _context_mesh
+
+
 func _get_selected_mesh_instance() -> MeshInstance3D:
 	var node := _get_selected_node3d()
-	return GodotASketchBrushable.resolve_mesh(node) if node else null
+	if node == null:
+		return null
+	var mesh := GodotASketchBrushable.resolve_mesh(node)
+	if mesh:
+		return mesh
+	var brushable := GodotASketchBrushable.find_brushable_for_collider(node)
+	if brushable:
+		return GodotASketchBrushable.resolve_mesh(brushable)
+	return null
 
 
 func _update_mark_buttons(mesh: MeshInstance3D) -> void:
@@ -278,13 +386,13 @@ func _update_mark_buttons(mesh: MeshInstance3D) -> void:
 
 
 func _current_stack() -> GodotASketchShaderStack:
-	return GodotASketchShaderStackAssign.load_stack(_target_mesh) if _target_mesh else null
+	return ShaderStackAssign.load_stack(_target_mesh) if _target_mesh else null
 
 
 func _save_current_stack(stack: GodotASketchShaderStack) -> String:
 	if _target_mesh == null or stack == null:
 		return "No target mesh"
-	return GodotASketchShaderStackAssign.assign_stack(_target_mesh, stack)
+	return ShaderStackAssign.assign_stack(_target_mesh, stack)
 
 
 func _layer_list_text(layer: GodotASketchShaderStackLayer) -> String:
@@ -384,8 +492,8 @@ func _insert_contract_include(path: String) -> void:
 	var after := GodotASketchShaderContract.build_patched_source(before)
 	var undo := EditorInterface.get_editor_undo_redo()
 	undo.create_action("Insert Godot-a-Sketch layer contract")
-	undo.add_do_method(GodotASketchShaderContract.write_text.bind(path, after))
-	undo.add_undo_method(GodotASketchShaderContract.write_text.bind(path, before))
+	undo.add_do_method(GodotASketchShaderContract, "write_text", path, after)
+	undo.add_undo_method(GodotASketchShaderContract, "write_text", path, before)
 	undo.commit_action()
 	GodotASketchShaderContract.after_patch(path)
 	refresh_shader_catalog(true)
@@ -410,6 +518,9 @@ func _on_shader_catalog_activated(index: int) -> void:
 	var entry: GodotASketchShaderCatalogEntry = _shader_catalog_list.get_item_metadata(index)
 	if entry == null:
 		return
+	if _target_mesh == null:
+		set_status("Select or hover a mesh, then double-click a shader to add it to the stack")
+		return
 	GodotASketchShaderCatalog.probe_entry(entry)
 	if not entry.loadable:
 		set_status("Shader failed to load — fix compile errors first")
@@ -424,6 +535,8 @@ func _on_refresh_catalog_pressed() -> void:
 
 func _on_add_menu_id_pressed(id: int) -> void:
 	match id:
+		MENU_TEMPLATE_LAYER:
+			_add_bundled_template_layer()
 		MENU_FROM_MESH:
 			_add_layer_from_selected_mesh()
 		MENU_BROWSE:
@@ -431,6 +544,14 @@ func _on_add_menu_id_pressed(id: int) -> void:
 		MENU_TEMPLATE:
 			_template_dialog.current_file = "layer.gdshader"
 			_template_dialog.popup_file_dialog()
+
+
+func _add_bundled_template_layer() -> void:
+	var shader: Shader = load(GodotASketchConstants.LAYER_TEMPLATE_PATH) as Shader
+	if shader == null:
+		set_status("Bundled template shader not found")
+		return
+	_add_layer_from_shader(shader, "layer_template")
 
 
 func _on_browse_shader_selected(path: String) -> void:
@@ -464,43 +585,51 @@ func _on_template_saved(path: String) -> void:
 
 func _add_layer_from_selected_mesh() -> void:
 	if _target_mesh == null:
-		set_status("Select a brushable mesh")
+		set_status("Select or hover a mesh first")
 		return
 	var shader := GodotASketchShaderCatalog.shader_from_mesh(_target_mesh)
+	if shader == null and _selected_catalog_entry != null:
+		GodotASketchShaderCatalog.probe_entry(_selected_catalog_entry)
+		if _selected_catalog_entry.loadable:
+			shader = load(_selected_catalog_entry.path) as Shader
 	if shader == null:
-		set_status("Selected mesh has no ShaderMaterial")
+		set_status("No shader on mesh — pick one in Available shaders, then Add or double-click")
 		return
 	_add_layer_from_shader(shader)
 
 
 func _add_layer_from_shader(shader: Shader, display_name: String = "") -> void:
 	if _target_mesh == null:
-		set_status("Select a brushable mesh")
+		set_status("Select or hover a mesh first")
 		return
 	if shader == null:
 		set_status("Could not load shader")
 		return
-	var stack := GodotASketchShaderStackAssign.ensure_stack(_target_mesh)
+	var stack := ShaderStackAssign.ensure_stack(_target_mesh)
 	if stack == null:
 		set_status("Could not create stack — check Output panel")
 		return
 	if stack.layers.size() >= MAX_STACK_LAYERS:
 		set_status("Stack supports %d layers (RGBA splat channels)" % MAX_STACK_LAYERS)
 		return
-	var layer := GodotASketchShaderStackLayer.new()
+	var layer := ShaderStackLayer.new()
 	layer.shader = shader
 	layer.display_name = display_name if display_name != "" else shader.resource_path.get_file().get_basename()
 	layer.mask_channel = stack.layers.size()
 	stack.add_layer(layer)
+	var had_shader_mat := _target_mesh.material_override is ShaderMaterial
 	var err := _save_current_stack(stack)
 	if err != "":
 		set_status(err)
 		return
+	GodotASketchBrushable.apply_layer_to_mesh(_target_mesh, layer)
 	refresh_shader_stack_ui()
 	var paint_ready := GodotASketchShaderValidator.is_layer_shader(shader)
+	var mat_note := " — ShaderMaterial created" if not had_shader_mat else ""
 	set_status(
-		"Layer added: %s%s" % [
+		"Layer added: %s%s%s" % [
 			layer.display_name,
+			mat_note,
 			"" if paint_ready else " (generic — splat painting needs paint-ready shader)"
 		]
 	)
@@ -564,7 +693,7 @@ func _on_paste_stack_pressed() -> void:
 	if _target_mesh == null or _stack_clipboard == null:
 		return
 	var copy := _stack_clipboard.duplicate_stack()
-	var err := GodotASketchShaderStackAssign.assign_stack_copy(_target_mesh, copy)
+	var err := ShaderStackAssign.assign_stack_copy(_target_mesh, copy)
 	if err != "":
 		set_status(err)
 		return
@@ -573,9 +702,9 @@ func _on_paste_stack_pressed() -> void:
 
 
 func _on_mark_brushable_pressed() -> void:
-	var mesh := _get_selected_mesh_instance()
+	var mesh := _resolve_target_mesh()
 	if mesh == null:
-		set_status("Select a MeshInstance3D")
+		set_status("Select or hover a MeshInstance3D")
 		return
 	if GodotASketchBrushable.is_brushable(mesh):
 		set_status("%s is already brushable" % mesh.name)
@@ -586,9 +715,9 @@ func _on_mark_brushable_pressed() -> void:
 
 
 func _on_unmark_brushable_pressed() -> void:
-	var mesh := _get_selected_mesh_instance()
+	var mesh := _resolve_target_mesh()
 	if mesh == null:
-		set_status("Select a MeshInstance3D")
+		set_status("Select or hover a MeshInstance3D")
 		return
 	var err := GodotASketchBrushable.unmark(mesh)
 	set_status(err if err != "" else "Unmarked brushable")

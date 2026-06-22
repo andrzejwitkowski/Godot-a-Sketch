@@ -2,10 +2,11 @@ extends RefCounted
 class_name GodotASketchRaycast
 
 const Brushable := preload("res://addons/godot_a_sketch/godot_a_sketch_brushable.gd")
+const MeshUV := preload("res://addons/godot_a_sketch/godot_a_sketch_mesh_uv.gd")
 const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants.gd")
 
 
-static func cast_from_camera(camera: Camera3D, screen_pos: Vector2, scene_root: Node3D) -> Dictionary:
+static func cast_from_camera(camera: Camera3D, screen_pos: Vector2, scene_root: Node) -> Dictionary:
 	var origin: Vector3 = camera.project_ray_origin(screen_pos)
 	var direction: Vector3 = camera.project_ray_normal(screen_pos)
 	var end: Vector3 = origin + direction * Constants.RAY_LENGTH
@@ -18,11 +19,65 @@ static func cast_from_camera(camera: Camera3D, screen_pos: Vector2, scene_root: 
 	return hit
 
 
+static func cast_for_paint(camera: Camera3D, screen_pos: Vector2, scene_root: Node) -> Dictionary:
+	var origin: Vector3 = camera.project_ray_origin(screen_pos)
+	var direction: Vector3 = camera.project_ray_normal(screen_pos)
+	var hit := _mesh_cast(origin, direction, scene_root, Constants.RAY_LENGTH, true)
+	if not hit.is_empty():
+		return _finalize_paint_hit(hit, origin, direction)
+	hit = cast_from_camera(camera, screen_pos, scene_root)
+	if hit.is_empty():
+		return {}
+	return _finalize_paint_hit(hit, origin, direction)
+
+
+static func mesh_for_paint(hit: Dictionary) -> MeshInstance3D:
+	if hit.is_empty():
+		return null
+	var mesh: MeshInstance3D = hit.get("mesh_instance")
+	if mesh and mesh.mesh:
+		return mesh
+	var brushable: Node3D = hit.get("brushable_node")
+	if brushable:
+		mesh = Brushable.resolve_mesh(brushable)
+		if mesh and mesh.mesh:
+			return mesh
+	var collider: Node = hit.get("collider")
+	if collider:
+		var from_collider := Brushable.find_brushable_for_collider(collider)
+		if from_collider:
+			mesh = Brushable.resolve_mesh(from_collider)
+			if mesh and mesh.mesh:
+				return mesh
+	return null
+
+
+static func _finalize_paint_hit(hit: Dictionary, ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
+	if hit.has("uv"):
+		var mesh: MeshInstance3D = hit.get("mesh_instance")
+		if mesh:
+			hit["brushable_node"] = mesh
+		return hit
+	var mesh := mesh_for_paint(hit)
+	if mesh == null:
+		return {}
+	var xf_inv: Transform3D = mesh.global_transform.affine_inverse()
+	var local_o: Vector3 = xf_inv * ray_origin
+	var local_d: Vector3 = (xf_inv.basis * ray_direction).normalized()
+	var uv_info := MeshUV.resolve_uv_ray(mesh, local_o, local_d)
+	hit["mesh_instance"] = mesh
+	hit["brushable_node"] = mesh
+	hit["uv"] = uv_info.uv
+	if uv_info.planar:
+		hit["uv_planar_fallback"] = true
+	return hit
+
+
 static func _physics_cast(
 	origin: Vector3,
 	end: Vector3,
 	camera: Camera3D,
-	scene_root: Node3D,
+	scene_root: Node,
 	collision_mask: int
 ) -> Dictionary:
 	var world: World3D = camera.get_world_3d()
@@ -52,8 +107,9 @@ static func _physics_cast(
 static func _mesh_cast(
 	origin: Vector3,
 	direction: Vector3,
-	scene_root: Node3D,
-	max_distance: float
+	scene_root: Node,
+	max_distance: float,
+	with_uv: bool = false
 ) -> Dictionary:
 	var best_distance: float = max_distance
 	var best_hit: Dictionary = {}
@@ -62,6 +118,8 @@ static func _mesh_cast(
 		if not Brushable.is_brushable(node):
 			continue
 		var mesh_instance: MeshInstance3D = node as MeshInstance3D
+		if mesh_instance.mesh == null:
+			continue
 		var triangle_mesh: TriangleMesh = Brushable.triangle_mesh_for(mesh_instance)
 		if triangle_mesh == null:
 			continue
@@ -76,6 +134,7 @@ static func _mesh_cast(
 
 		var local_position: Vector3 = local_hit.get("position", Vector3.ZERO)
 		var local_normal: Vector3 = local_hit.get("normal", Vector3.UP)
+		var face_index: int = int(local_hit.get("face_index", -1))
 		var world_hit: Vector3 = mesh_instance.global_transform * local_position
 		var distance: float = origin.distance_to(world_hit)
 		if distance >= best_distance:
@@ -88,7 +147,14 @@ static func _mesh_cast(
 			"normal": world_normal,
 			"collider": mesh_instance,
 			"brushable_node": mesh_instance,
+			"mesh_instance": mesh_instance,
+			"face_index": face_index,
 		}
+		if with_uv:
+			var uv := MeshUV.hit_uv(mesh_instance, face_index, local_position, local_normal)
+			best_hit["uv"] = uv
+			if not MeshUV.has_mesh_uvs(mesh_instance) or face_index < 0:
+				best_hit["uv_planar_fallback"] = true
 
 	return best_hit
 

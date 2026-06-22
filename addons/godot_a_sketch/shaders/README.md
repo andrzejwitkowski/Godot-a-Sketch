@@ -4,7 +4,7 @@ Paint stack layers must implement the contract in `layer_common.gdshaderinc`.
 
 ## Required uniforms
 
-- `splat_mask` — RGBA splat weights (driven in #8)
+- `splat_mask` — RGBA splat weights; driven by per-mesh `SplatMap` resource (#6). Wired to materials in #8.
 - `mask_channel` — 0–3 (R/G/B/A slot for this layer)
 - `layer_weight` — stack blend weight
 - `layer_albedo` — layer albedo texture

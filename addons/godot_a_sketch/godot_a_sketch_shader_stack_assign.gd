@@ -1,7 +1,9 @@
+@tool
 extends RefCounted
 class_name GodotASketchShaderStackAssign
 
 const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants.gd")
+const ShaderStack := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack.gd")
 
 
 static func stack_path(mesh: MeshInstance3D) -> String:
@@ -14,7 +16,15 @@ static func load_stack(mesh: MeshInstance3D) -> GodotASketchShaderStack:
 	var path := stack_path(mesh)
 	if path.is_empty() or not ResourceLoader.exists(path):
 		return null
-	return load(path) as GodotASketchShaderStack
+	var stack := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GodotASketchShaderStack
+	if _is_placeholder(stack):
+		push_warning("Godot-a-Sketch: stale stack resource at %s — will recreate" % path)
+		return null
+	return stack
+
+
+static func _is_placeholder(resource: Resource) -> bool:
+	return resource == null or resource.get_script() == null
 
 
 static func assign_stack(mesh: MeshInstance3D, stack: GodotASketchShaderStack, path: String = "") -> String:
@@ -23,9 +33,9 @@ static func assign_stack(mesh: MeshInstance3D, stack: GodotASketchShaderStack, p
 	var errors := stack.validate()
 	if not errors.is_empty():
 		return errors[0]
-	if path.is_empty():
+	if path.is_empty() or not Constants.is_usable_resource_path(path):
 		path = stack_path(mesh)
-	if path.is_empty():
+	if path.is_empty() or not Constants.is_usable_resource_path(path):
 		path = _default_path(mesh)
 	var err := _ensure_parent_dir(path)
 	if err != "":
@@ -40,9 +50,9 @@ static func assign_stack(mesh: MeshInstance3D, stack: GodotASketchShaderStack, p
 
 static func ensure_stack(mesh: MeshInstance3D) -> GodotASketchShaderStack:
 	var stack := load_stack(mesh)
-	if stack:
+	if stack and not _is_placeholder(stack):
 		return stack
-	stack = GodotASketchShaderStack.new()
+	stack = ShaderStack.new()
 	if assign_stack(mesh, stack) != "":
 		return null
 	return stack
@@ -71,12 +81,7 @@ static func detach_stack(mesh: MeshInstance3D, delete_file: bool = true) -> void
 
 
 static func _default_path(mesh: MeshInstance3D) -> String:
-	var owner_root := mesh.owner
-	if owner_root == null and mesh.is_inside_tree():
-		owner_root = mesh.get_tree().edited_scene_root
-	var scene_name := owner_root.name if owner_root else "scene"
-	var node_path := str(mesh.get_path()).replace("/", "_").trim_prefix("_")
-	return Constants.SHADER_STACK_DEFAULT_DIR.path_join("%s__%s.tres" % [scene_name, node_path])
+	return Constants.SHADER_STACK_DEFAULT_DIR.path_join("%s.tres" % Constants.mesh_resource_slug(mesh))
 
 
 static func _ensure_parent_dir(path: String) -> String:

@@ -55,7 +55,7 @@ text = "0 shaders"
 
 [node name="ShaderCatalogLabel" type="Label" parent="Margin/VBox/StackSection"]
 layout_mode = 2
-text = "Available shaders"
+text = "Available shaders (double-click to add layer)"
 
 [node name="ShaderCatalogList" type="ItemList" parent="Margin/VBox/StackSection"]
 custom_minimum_size = Vector2(0, 96)
@@ -74,6 +74,16 @@ text = "Stack layers"
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="SplatPreviewLabel" type="Label" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+text = "Splat mask preview"
+
+[node name="SplatPreview" type="TextureRect" parent="Margin/VBox/StackSection"]
+custom_minimum_size = Vector2(0, 96)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
 
 [node name="StackButtons" type="HBoxContainer" parent="Margin/VBox/StackSection"]
 layout_mode = 2
@@ -143,7 +153,7 @@ theme_override_constants/separation = 4
 [node name="ModifierCaption" type="Label" parent="Margin/VBox/TargetSection/ModifierRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
-text = "Modifier"
+text = "Raycast mod."
 
 [node name="ModifierOption" type="OptionButton" parent="Margin/VBox/TargetSection/ModifierRow"]
 layout_mode = 2

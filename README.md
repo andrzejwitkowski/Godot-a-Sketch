@@ -39,7 +39,7 @@ Each brushable `MeshInstance3D` owns a **ShaderStack** resource saved as a `.tre
    - **Browse shader…** — pick any `.gdshader` in the project
    - **New from template…** — copy `layer_template.gdshader` to a new file and open it
    Or double-click a shader in **Available shaders** (max **4 layers** — RGBA splat channels).
-3. **Remove**, **Up**, **Down** edit the stack; changes save to the mesh `.tres` immediately. Layer weight is shown read-only; blend/mask editing lands with splat painting (#7).
+3. **Remove**, **Up**, **Down** edit the stack; changes save to the mesh `.tres` immediately. Layer weight is shown read-only; blend mode per layer is used when painting.
 4. **Copy stack** / **Paste stack** duplicate stack data onto another mesh (new `.tres` file).
 5. Click **Refresh** to rescan shaders (validates on refresh; use after adding or editing `.gdshader` files).
 
@@ -50,8 +50,22 @@ See `addons/godot_a_sketch/shaders/README.md` for the paint layer contract.
 ### Brush
 
 - **Size**, **Opacity** (0–100%), and **Hardness** (0–100%) sliders update values in real time.
+- **Mode → Paint** — left-drag in the 3D viewport stamps the active stack layer onto the mesh splat mask.
+- Select a layer in **Stack layers** to choose which RGBA channel (R/G/B/A) receives paint.
+- **Splat mask preview** shows the current mask texture for the selected brushable mesh.
 - Brush settings persist across editor restarts via editor settings.
 - Dock position and floating state persist via Godot's built-in editor layout system.
+
+### Splat Map
+
+Each brushable mesh owns a **SplatMap** resource (`.tres`) with an RGBA8 mask image. Path metadata: `godot_a_sketch_splat_map_path`. Default location: `res://godot_a_sketch_splats/`. Created when the mesh is marked brushable.
+
+- Default fill is **black** (channel weight 0); painting raises values toward 1.
+- Default resolution: **1024×1024** (override via editor setting `godot_a_sketch/splat/default_size`).
+- If an old splat `.tres` was created when the default was white, delete it under `godot_a_sketch_splats/` and **Unmark → Mark Brushable** to recreate.
+- Painting stamps the mask image directly on mouse drag; saved on mouse release.
+- `SplatMap.to_texture()` returns a `Texture2D` for manual wiring; automatic material binding is **#8**.
+- UV mapping uses mesh `TEX_UV` / `TEX_UV2` when present; otherwise **planar fallback** from hit position (re-mark brushable after addon update to rebuild cache).
 
 ## Raycast
 
@@ -61,7 +75,7 @@ See `addons/godot_a_sketch/shaders/README.md` for the paint layer contract.
    - If a `StaticBody3D` already exists, layer 20 is added to its collision layers.
 3. Move the mouse in the 3D viewport (raycast is always on when **Modifier** is **None**, the default).
 4. The dock shows the hit node and position, or **No hit** when the ray misses brushable geometry.
-5. Use **Unmark** to remove brushable metadata, delete the mesh stack `.tres` under `godot_a_sketch_stacks/`, and remove auto-created collision bodies.
+5. Use **Unmark** to remove brushable metadata, delete stack `.tres` under `godot_a_sketch_stacks/` and splat `.tres` under `godot_a_sketch_splats/`, and remove auto-created collision bodies.
 
 Set **Modifier** to **Shift**, **Alt**, or **Ctrl** if you only want raycast while holding that key. The choice persists across editor restarts.
 
@@ -86,3 +100,14 @@ The ghost node is editor-only and is not intended to be saved with the scene.
 6. Reorder layers — order persisted in `.tres`.
 7. Add new `.gdshader` to project → **Refresh** → shader appears in **Available shaders**.
 8. Legacy editor-settings stack names migrate once to the first edited brushable mesh.
+
+## Manual test plan (Splat Map)
+
+1. Mark mesh brushable → `godot_a_sketch_splats/{scene}__{node}.tres` created (black 1024²).
+2. Add a layer to the stack, select it in **Stack layers**.
+3. Set **Mode → Paint**, left-drag on the mesh — **Splat mask preview** updates.
+4. Fast drag — continuous stroke without gaps.
+5. Change opacity/hardness — falloff changes.
+6. Select another layer (different channel) — paint accumulates in another RGBA channel.
+7. Release mouse — splat `.tres` saved; reload scene — mask persists.
+8. Assign `SplatMap.to_texture()` to any `sampler2D` in the inspector to verify export readiness (#8).

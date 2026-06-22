@@ -29,3 +29,53 @@ const BUNDLED_SHADER_DIR := "res://addons/godot_a_sketch/shaders/"
 const LAYER_TEMPLATE_PATH := "res://addons/godot_a_sketch/shaders/layer_template.gdshader"
 const SETTINGS_STACK_LEGACY_NAMES := "godot_a_sketch/stack/names"
 const SETTINGS_STACK_MIGRATED := "godot_a_sketch/stack/migrated_v5"
+
+const SPLAT_MAP_META := "godot_a_sketch_splat_map_path"
+const SPLAT_MAP_DEFAULT_DIR := "res://godot_a_sketch_splats/"
+const SETTINGS_SPLAT_SIZE := "godot_a_sketch/splat/default_size"
+const DEFAULT_SPLAT_SIZE := 1024
+const MESH_UV_META := "godot_a_sketch_mesh_uv_cache"
+const SPLAT_STAMP_SHADER := "res://addons/godot_a_sketch/shaders/splat_stamp.gdshader"
+
+
+static func mesh_resource_slug(mesh: MeshInstance3D) -> String:
+	if mesh == null:
+		return "unknown_mesh"
+	var scene_root := EditorInterface.get_edited_scene_root()
+	var scene_name := _scene_file_slug(scene_root)
+	if scene_root == null:
+		return "%s__%s_%d" % [scene_name, String(mesh.name).validate_filename(), mesh.get_instance_id()]
+	if mesh == scene_root:
+		return "%s__%s" % [scene_name, String(mesh.name).validate_filename()]
+	var parts: PackedStringArray = []
+	var node: Node = mesh
+	while node and node != scene_root:
+		parts.append(_safe_node_name(node.name))
+		node = node.get_parent()
+	if node != scene_root:
+		# ponytail: mesh not under edited scene root (viewport duplicate) — stable fallback
+		return "%s__%s_%d" % [scene_name, String(mesh.name).validate_filename(), mesh.get_instance_id()]
+	parts.reverse()
+	return "%s__%s" % [scene_name, "_".join(parts)]
+
+
+static func _scene_file_slug(scene_root: Node) -> String:
+	if scene_root == null:
+		return "scene"
+	var scene_path := scene_root.scene_file_path
+	if not scene_path.is_empty():
+		return scene_path.get_file().get_basename()
+	return String(scene_root.name).validate_filename()
+
+
+static func _safe_node_name(node_name: StringName) -> String:
+	var s := String(node_name).validate_filename()
+	return s if not s.is_empty() else "node"
+
+
+static func is_usable_resource_path(path: String) -> bool:
+	if path.is_empty() or not path.begins_with("res://"):
+		return false
+	if path.length() > 180:
+		return false
+	return not path.contains("@")

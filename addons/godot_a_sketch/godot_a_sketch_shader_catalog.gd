@@ -115,6 +115,8 @@ static func _walk_fs_dir(dir: EditorFileSystemDirectory) -> void:
 
 
 static func _add_shader_path(path: String, source: String) -> void:
+	if path.get_file() == "splat_stamp.gdshader":
+		return
 	for entry in _entries:
 		if entry.path == path:
 			if source == "bundled":

@@ -2,6 +2,10 @@ extends RefCounted
 class_name GodotASketchBrushable
 
 const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants.gd")
+const MeshUV := preload("res://addons/godot_a_sketch/godot_a_sketch_mesh_uv.gd")
+const SplatMapAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_map_assign.gd")
+const ShaderValidator := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_validator.gd")
+const ShaderStackAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack_assign.gd")
 
 static func mark(node: Node3D) -> String:
 	var mesh := _resolve_mesh(node)
@@ -21,6 +25,8 @@ static func mark(node: Node3D) -> String:
 	mesh.set_meta(Constants.BRUSHABLE_META, true)
 	mesh.add_to_group(Constants.BRUSHABLE_GROUP)
 	_cache_triangle_mesh(mesh)
+	MeshUV.cache(mesh)
+	SplatMapAssign.ensure_map(mesh)
 	_sync_paint_body(mesh)
 	_mark_scene_edited(mesh)
 	return ""
@@ -36,7 +42,9 @@ static func unmark(node: Node3D) -> String:
 		mesh.remove_meta(Constants.BRUSHABLE_META)
 	if mesh.has_meta(Constants.TRIANGLE_MESH_META):
 		mesh.remove_meta(Constants.TRIANGLE_MESH_META)
-	GodotASketchShaderStackAssign.detach_stack(mesh)
+	MeshUV.clear(mesh)
+	ShaderStackAssign.detach_stack(mesh)
+	SplatMapAssign.detach_map(mesh)
 
 	if mesh.has_meta(Constants.AUTO_BODY_META) and mesh.get_meta(Constants.AUTO_BODY_META):
 		var auto_body := mesh.get_node_or_null(Constants.AUTO_BODY_NAME)
@@ -74,6 +82,10 @@ static func find_brushable_ancestor(node: Node) -> Node3D:
 
 
 static func find_brushable_for_collider(node: Node) -> Node3D:
+	if node.name == Constants.AUTO_BODY_NAME:
+		var parent := node.get_parent()
+		if parent is MeshInstance3D and is_brushable(parent):
+			return parent
 	var from_ancestor := find_brushable_ancestor(node)
 	if from_ancestor:
 		return from_ancestor
@@ -82,6 +94,50 @@ static func find_brushable_for_collider(node: Node) -> Node3D:
 
 static func resolve_mesh(node: Node3D) -> MeshInstance3D:
 	return _resolve_mesh(node)
+
+
+static func ensure_shader_material(mesh: MeshInstance3D) -> ShaderMaterial:
+	if mesh == null:
+		return null
+	var mat := mesh.material_override
+	if mat is ShaderMaterial:
+		return mat as ShaderMaterial
+	var shader_mat := ShaderMaterial.new()
+	mesh.material_override = shader_mat
+	_mark_scene_edited(mesh)
+	return shader_mat
+
+
+static func apply_layer_to_mesh(mesh: MeshInstance3D, layer) -> void:
+	if mesh == null or layer == null or layer.shader == null:
+		return
+	var shader_mat := ensure_shader_material(mesh)
+	# ponytail: mesh preview uses bundled layer_template until #8 stack compositor
+	var preview_shader: Shader = load(Constants.LAYER_TEMPLATE_PATH) as Shader
+	if preview_shader:
+		shader_mat.shader = preview_shader
+	if not ShaderValidator.is_layer_shader(preview_shader if preview_shader else layer.shader):
+		return
+	var map = SplatMapAssign.ensure_map(mesh)
+	if map:
+		shader_mat.set_shader_parameter("splat_mask", map.to_texture())
+	shader_mat.set_shader_parameter("mask_channel", layer.mask_channel)
+	shader_mat.set_shader_parameter("layer_weight", layer.weight)
+	_mark_scene_edited(mesh)
+
+
+static func refresh_splat_on_mesh(mesh: MeshInstance3D) -> void:
+	if mesh == null:
+		return
+	var mat := mesh.material_override
+	if not (mat is ShaderMaterial):
+		return
+	var shader_mat: ShaderMaterial = mat
+	if shader_mat.shader == null or not ShaderValidator.is_layer_shader(shader_mat.shader):
+		return
+	var map = SplatMapAssign.load_map(mesh)
+	if map:
+		shader_mat.set_shader_parameter("splat_mask", map.to_texture())
 
 
 static func _find_brushable_mesh_descendant(root: Node) -> MeshInstance3D:
