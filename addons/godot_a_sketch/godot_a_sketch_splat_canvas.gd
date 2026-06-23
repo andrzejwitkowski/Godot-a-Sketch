@@ -23,10 +23,11 @@ func _ready() -> void:
 
 
 func set_editable(enabled: bool) -> void:
+	if not enabled and _dragging:
+		_cancel_drag()
+		stroke_end.emit()
 	_editable = enabled
 	mouse_filter = MOUSE_FILTER_STOP if enabled else MOUSE_FILTER_IGNORE
-	if not enabled:
-		_cancel_drag()
 
 
 func set_preview_texture(tex: Texture2D) -> void:

@@ -10,6 +10,7 @@ var _preview_tex: ImageTexture
 var _preview_img: Image
 var _preview_src: Image
 var _preview_dirty := Rect2i()
+var _preview_channel := -999
 
 
 static func create_default(resolution: int = 1024) -> GodotASketchSplatMap:
@@ -26,6 +27,7 @@ func invalidate_caches() -> void:
 	_preview_img = null
 	_preview_src = null
 	_preview_dirty = Rect2i()
+	_preview_channel = -999
 
 
 func to_texture() -> ImageTexture:
@@ -56,6 +58,9 @@ func preview_texture(channel: int = -1) -> ImageTexture:
 	ensure_rgba8()
 	if _preview_img == null:
 		_preview_img = Image.create(PREVIEW_SIZE, PREVIEW_SIZE, false, Image.FORMAT_RGBA8)
+	if channel != _preview_channel:
+		_preview_channel = channel
+		_preview_dirty = Rect2i(0, 0, PREVIEW_SIZE, PREVIEW_SIZE)
 	_sync_preview_channel(channel)
 	if _preview_tex == null:
 		_preview_tex = ImageTexture.create_from_image(_preview_img)

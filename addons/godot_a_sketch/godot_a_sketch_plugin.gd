@@ -23,6 +23,7 @@ var _input_pressed := false
 var _input_dragging := false
 var _uniform_refresh_pending := false
 var _pending_uniform_mesh: MeshInstance3D
+var _canvas_stroke_mesh: MeshInstance3D
 
 
 func _enter_tree() -> void:
@@ -227,8 +228,10 @@ func _flush_splat_uniform_refresh() -> void:
 
 func _finish_splat_stroke() -> void:
 	if _paint_session == null or not _paint_session.is_painting():
+		_canvas_stroke_mesh = null
 		return
 	var mesh: MeshInstance3D = _paint_session.end_stroke()
+	_canvas_stroke_mesh = null
 	_paint_last_uv = Vector2(-1.0, -1.0)
 	if mesh:
 		_flush_splat_uniform_refresh()
@@ -254,13 +257,14 @@ func _on_splat_canvas_stroke_begin() -> void:
 	if not _paint_session.is_painting():
 		_dock_panel.set_status("Could not open splat map — check Output panel")
 		return
+	_canvas_stroke_mesh = mesh as MeshInstance3D
 	_paint_last_uv = Vector2(-1.0, -1.0)
 
 
 func _on_splat_canvas_stroke_uv(from_uv: Vector2, to_uv: Vector2) -> void:
 	if _dock_panel == null or _paint_session == null or not _paint_session.is_painting():
 		return
-	var mesh := _dock_panel.get_target_mesh() as MeshInstance3D
+	var mesh := _canvas_stroke_mesh
 	if mesh == null:
 		return
 	var layer := _dock_panel.get_active_stack_layer(mesh)
@@ -268,6 +272,7 @@ func _on_splat_canvas_stroke_uv(from_uv: Vector2, to_uv: Vector2) -> void:
 		return
 	_stamp_line(mesh, from_uv, to_uv, layer)
 	_paint_last_uv = to_uv
+	_request_splat_uniform_refresh(mesh)
 	_dock_panel.refresh_splat_canvas(mesh)
 
 
@@ -364,6 +369,7 @@ func _cancel_active_stroke() -> void:
 			if _dock_panel:
 				_dock_panel.refresh_splat_canvas(mesh)
 	_reset_paint_input()
+	_canvas_stroke_mesh = null
 
 
 func _reset_paint_input() -> void:
