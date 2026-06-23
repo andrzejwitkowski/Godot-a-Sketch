@@ -69,6 +69,7 @@ static func _unmark_surface_mesh(mesh: MeshInstance3D) -> String:
 	MeshUV.clear(mesh)
 	ShaderStackAssign.detach_stack(mesh)
 	SplatMapAssign.detach_map(mesh)
+	_clear_stack_material_override(mesh)
 	if mesh.has_meta(Constants.AUTO_BODY_META) and mesh.get_meta(Constants.AUTO_BODY_META):
 		var auto_body := mesh.get_node_or_null(Constants.AUTO_BODY_NAME)
 		if auto_body:
@@ -114,6 +115,8 @@ static func supports_splat_paint(target: Node) -> bool:
 
 
 static func resolve_paint_target(node: Node3D) -> Node3D:
+	if node == null:
+		return null
 	if node is MultiMeshInstance3D or node is MeshInstance3D:
 		return node
 	var multimeshes := node.find_children("*", "MultiMeshInstance3D", true, false)

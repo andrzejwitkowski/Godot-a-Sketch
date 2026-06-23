@@ -13,7 +13,7 @@ Paint stack layers must implement the contract in `layer_common.gdshaderinc`.
 
 Each `ShaderStackLayer` owns a `layer_material` (`ShaderMaterial`) saved in the mesh stack `.tres`. Custom uniforms live there; use **Edit layer material** in the dock.
 
-**Paint-ready shaders must sample the mask in `fragment()`** — call `godot_a_sketch_mask_weight(UV)` from `layer_common.gdshaderinc` and `discard` or modulate alpha where weight is 0. Declaring the uniforms alone is not enough (see `grass_blade.gdshader`).
+**Paint-ready shaders must sample the mask in `fragment()`** — call `godot_a_sketch_mask_weight(UV)` from `layer_common.gdshaderinc` and `discard` or modulate alpha where weight is 0. Declaring the uniforms alone is not enough.
 
 `layer_template.gdshader` is for surface mask painting on brushable `MeshInstance3D` meshes.
 

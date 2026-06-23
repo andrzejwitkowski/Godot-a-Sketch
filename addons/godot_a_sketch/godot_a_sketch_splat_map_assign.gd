@@ -109,8 +109,10 @@ static func ensure_map(target: Node3D) -> GodotASketchSplatMap:
 
 
 static func detach_map(target: Node3D, delete_file: bool = true) -> void:
+	if target == null:
+		return
 	_working.erase(target.get_instance_id())
-	if target == null or not target.has_meta(Constants.SPLAT_MAP_META):
+	if not target.has_meta(Constants.SPLAT_MAP_META):
 		return
 	var path := String(target.get_meta(Constants.SPLAT_MAP_META))
 	target.remove_meta(Constants.SPLAT_MAP_META)
