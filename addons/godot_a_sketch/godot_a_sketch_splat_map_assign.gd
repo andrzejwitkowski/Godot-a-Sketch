@@ -92,8 +92,9 @@ static func default_resolution() -> int:
 static func assign_map(target: Node3D, map: GodotASketchSplatMap, path: String = "") -> String:
 	if target == null or map == null:
 		return "Invalid mesh or splat map"
+	var old_path := map_path(target)
 	if path.is_empty() or not Constants.is_usable_resource_path(path):
-		path = map_path(target)
+		path = old_path
 	if path.is_empty() or not Constants.is_usable_resource_path(path):
 		path = _default_path(target)
 	if ResourceLoader.exists(path) and not ResourceLoader.exists(path, "GodotASketchSplatMap"):
@@ -104,6 +105,8 @@ static func assign_map(target: Node3D, map: GodotASketchSplatMap, path: String =
 	var save_err := ResourceSaver.save(map, path)
 	if save_err != OK:
 		return "Failed to save splat map: %s" % error_string(save_err)
+	if not old_path.is_empty() and old_path != path:
+		_by_path.erase(old_path)
 	target.set_meta(Constants.SPLAT_MAP_META, path)
 	_by_path[path] = map
 	EditorInterface.mark_scene_as_unsaved()

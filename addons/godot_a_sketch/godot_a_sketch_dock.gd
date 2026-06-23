@@ -252,6 +252,7 @@ func refresh_shader_stack_ui() -> void:
 	_set_stack_controls_enabled(mesh != null)
 	if mesh == null:
 		_stack_hint.text = "Select a MeshInstance3D or MultiMeshInstance3D, or hover one in the 3D view"
+		refresh_splat_canvas(null)
 	elif not GodotASketchBrushable.is_brushable(mesh):
 		var kind := "MultiMesh" if GodotASketchBrushable.is_multimesh_target(mesh) else "mesh"
 		_stack_hint.text = "%s — click Mark Brushable to manage %s stack" % [mesh.name, kind]

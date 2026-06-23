@@ -55,7 +55,7 @@ See `addons/godot_a_sketch/shaders/README.md` for the paint layer contract.
 - **Mode → Erase** — rubber: lowers the active channel toward 0.
 - **Splat mask** canvas — click/drag directly on the preview in the dock (no modifier; uses brush + mode below).
 - Select a layer in **Stack layers** to choose which RGBA channel (R/G/B/A) receives paint or erase.
-- 3D viewport painting: enable **3D tool active**, hold **Paint modifier** (if set), then left-drag on the mesh.
+- 3D viewport painting: enable **3D tool active**, hold **modifier** (if set), then left-drag on the mesh.
 - Brush settings persist across editor restarts via editor settings.
 - Dock position and floating state persist via Godot's built-in editor layout system.
 
