@@ -50,6 +50,9 @@ static func assign_stack(target: Node3D, stack: GodotASketchShaderStack, path: S
 		return "Failed to save stack: %s" % error_string(save_err)
 	target.set_meta(Constants.SHADER_STACK_META, path)
 	EditorInterface.mark_scene_as_unsaved()
+	var fs := EditorInterface.get_resource_filesystem()
+	if fs:
+		fs.call_deferred("scan")
 	return ""
 
 

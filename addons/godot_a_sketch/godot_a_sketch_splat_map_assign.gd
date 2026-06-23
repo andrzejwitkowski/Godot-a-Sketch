@@ -89,6 +89,9 @@ static func assign_map(target: Node3D, map: GodotASketchSplatMap, path: String =
 		return "Failed to save splat map: %s" % error_string(save_err)
 	target.set_meta(Constants.SPLAT_MAP_META, path)
 	EditorInterface.mark_scene_as_unsaved()
+	var fs := EditorInterface.get_resource_filesystem()
+	if fs:
+		fs.call_deferred("scan")
 	return ""
 
 

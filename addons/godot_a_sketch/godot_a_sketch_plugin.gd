@@ -53,13 +53,18 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	var selection := get_editor_interface().get_selection()
-	selection.selection_changed.disconnect(_on_selection_changed)
+	if selection.selection_changed.is_connected(_on_selection_changed):
+		selection.selection_changed.disconnect(_on_selection_changed)
 	var inspector := get_editor_interface().get_inspector()
-	inspector.property_edited.disconnect(_on_inspector_property_edited)
-	scene_changed.disconnect(_on_scene_changed)
+	if inspector.property_edited.is_connected(_on_inspector_property_edited):
+		inspector.property_edited.disconnect(_on_inspector_property_edited)
+	if scene_changed.is_connected(_on_scene_changed):
+		scene_changed.disconnect(_on_scene_changed)
 	if _dock_panel:
-		_dock_panel.ghost_settings_changed.disconnect(_on_ghost_settings_changed)
-		_dock_panel.tool_active_changed.disconnect(_on_tool_active_changed)
+		if _dock_panel.ghost_settings_changed.is_connected(_on_ghost_settings_changed):
+			_dock_panel.ghost_settings_changed.disconnect(_on_ghost_settings_changed)
+		if _dock_panel.tool_active_changed.is_connected(_on_tool_active_changed):
+			_dock_panel.tool_active_changed.disconnect(_on_tool_active_changed)
 	if _ghost:
 		if _ghost.get_parent():
 			_ghost.get_parent().remove_child(_ghost)
