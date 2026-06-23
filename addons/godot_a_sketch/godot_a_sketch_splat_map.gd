@@ -15,6 +15,8 @@ static func create_default(resolution: int = 1024) -> GodotASketchSplatMap:
 
 
 func to_texture() -> ImageTexture:
+	if image == null:
+		return null
 	return ImageTexture.create_from_image(image)
 
 

@@ -47,10 +47,10 @@ func validate() -> PackedStringArray:
 		if layer == null:
 			errors.append("Layer %d: layer resource is null" % i)
 			continue
-		if layer.shader == null:
+		if layer.shader == null and layer.get_shader() == null:
 			continue
-		if not ShaderValidator.is_layer_shader(layer.shader):
-			var missing := ShaderValidator.missing_uniforms(layer.shader)
+		if not ShaderValidator.is_layer_shader(layer.get_shader()):
+			var missing := ShaderValidator.missing_uniforms(layer.get_shader())
 			errors.append(
 				'Layer %d (%s): missing uniforms: %s' % [i, layer.display_name, ", ".join(missing)]
 			)

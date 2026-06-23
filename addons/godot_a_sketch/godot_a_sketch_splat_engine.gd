@@ -2,7 +2,6 @@ extends RefCounted
 class_name GodotASketchSplatEngine
 
 var _map: GodotASketchSplatMap
-var _painting := false
 
 
 func ensure_open(map) -> void:
@@ -11,22 +10,6 @@ func ensure_open(map) -> void:
 	if _map == map:
 		return
 	_map = map
-
-
-func begin_paint() -> void:
-	_painting = true
-
-
-func end_paint() -> void:
-	_painting = false
-
-
-func is_painting() -> bool:
-	return _painting
-
-
-func get_map():
-	return _map
 
 
 func stamp(
@@ -39,18 +22,7 @@ func stamp(
 ) -> void:
 	if _map == null or _map.image == null:
 		return
-	_paint_stamp(_map.image, uv, radius, strength, hardness, channel, blend_mode)
-
-
-func _paint_stamp(
-	img: Image,
-	uv: Vector2,
-	radius: float,
-	strength: float,
-	hardness: float,
-	channel: int,
-	blend_mode: int
-) -> void:
+	var img := _map.image
 	var w := img.get_width()
 	var h := img.get_height()
 	if w < 1 or h < 1:

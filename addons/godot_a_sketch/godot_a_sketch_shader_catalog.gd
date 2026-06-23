@@ -34,6 +34,8 @@ static func probe_entry(entry: GodotASketchShaderCatalogEntry) -> void:
 		return
 	entry.probed = true
 	entry.has_contract = GodotASketchShaderContract.source_has_contract(entry.path)
+	var source := GodotASketchShaderContract.read_text(entry.path)
+	entry.uses_instance_data = GodotASketchShaderValidator.source_uses_instance_data(source)
 	if not ResourceLoader.exists(entry.path):
 		entry.loadable = false
 		entry.paint_ready = false

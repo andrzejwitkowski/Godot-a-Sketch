@@ -65,16 +65,22 @@ static func hit_uv(
 static func resolve_uv(mesh_instance: MeshInstance3D, local_pos: Vector3, local_normal: Vector3) -> Dictionary:
 	var face_index := -1
 	var at := local_pos
+	var n := local_normal.normalized()
+	if n.is_zero_approx():
+		n = Vector3.UP
 	var triangle_mesh: TriangleMesh = _triangle_mesh_for(mesh_instance)
 	if triangle_mesh != null:
-		var n := local_normal.normalized()
-		if n.is_zero_approx():
-			n = Vector3.UP
-		var seg := triangle_mesh.intersect_segment(local_pos - n * 0.05, local_pos + n * 0.05)
+		var probe := 0.05
+		if mesh_instance.mesh != null:
+			probe = maxf(probe, mesh_instance.mesh.get_aabb().size.length() * 0.002)
+		var seg := triangle_mesh.intersect_segment(local_pos - n * probe, local_pos + n * probe)
+		if seg.is_empty():
+			seg = triangle_mesh.intersect_segment(local_pos - n * probe * 8.0, local_pos + n * probe * 8.0)
 		if not seg.is_empty():
 			face_index = int(seg.get("face_index", -1))
 			at = seg.get("position", local_pos)
-	var uv := hit_uv(mesh_instance, face_index, at, local_normal)
+			n = seg.get("normal", n)
+	var uv := hit_uv(mesh_instance, face_index, at, n)
 	return {"uv": uv, "planar": not has_mesh_uvs(mesh_instance) or face_index < 0}
 
 

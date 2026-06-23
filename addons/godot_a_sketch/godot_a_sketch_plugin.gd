@@ -11,6 +11,7 @@ const PaintSession := preload("res://addons/godot_a_sketch/godot_a_sketch_paint_
 const Raycast := preload("res://addons/godot_a_sketch/godot_a_sketch_raycast.gd")
 const DockPanel := preload("res://addons/godot_a_sketch/godot_a_sketch_dock.gd")
 const Brushable := preload("res://addons/godot_a_sketch/godot_a_sketch_brushable.gd")
+const SplatMapAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_map_assign.gd")
 
 var _dock: EditorDock
 var _dock_panel: DockPanel
@@ -29,6 +30,7 @@ func _enter_tree() -> void:
 	_dock = EditorDock.new()
 	_dock.add_child(panel)
 	_dock_panel.ghost_settings_changed.connect(_on_ghost_settings_changed)
+	_dock_panel.tool_active_changed.connect(_on_tool_active_changed)
 	_dock.title = "Godot-a-Sketch"
 	_dock.default_slot = EditorDock.DOCK_SLOT_LEFT_UL
 	_dock.available_layouts = EditorDock.DOCK_LAYOUT_VERTICAL | EditorDock.DOCK_LAYOUT_FLOATING
@@ -39,6 +41,8 @@ func _enter_tree() -> void:
 	assert(template != null and ShaderValidator.is_layer_shader(template))
 	var selection := get_editor_interface().get_selection()
 	selection.selection_changed.connect(_on_selection_changed)
+	var inspector := get_editor_interface().get_inspector()
+	inspector.property_edited.connect(_on_inspector_property_edited)
 
 	_ghost = GhostBrushScript.new()
 	_ghost.name = Constants.GHOST_NODE_NAME
@@ -49,10 +53,13 @@ func _enter_tree() -> void:
 
 func _exit_tree() -> void:
 	var selection := get_editor_interface().get_selection()
-	if selection.selection_changed.is_connected(_on_selection_changed):
-		selection.selection_changed.disconnect(_on_selection_changed)
-	if scene_changed.is_connected(_on_scene_changed):
-		scene_changed.disconnect(_on_scene_changed)
+	selection.selection_changed.disconnect(_on_selection_changed)
+	var inspector := get_editor_interface().get_inspector()
+	inspector.property_edited.disconnect(_on_inspector_property_edited)
+	scene_changed.disconnect(_on_scene_changed)
+	if _dock_panel:
+		_dock_panel.ghost_settings_changed.disconnect(_on_ghost_settings_changed)
+		_dock_panel.tool_active_changed.disconnect(_on_tool_active_changed)
 	if _ghost:
 		if _ghost.get_parent():
 			_ghost.get_parent().remove_child(_ghost)
@@ -64,6 +71,7 @@ func _exit_tree() -> void:
 		_dock.queue_free()
 		_dock = null
 	_dock_panel = null
+	SplatMapAssign.clear_working()
 	remove_autoload_singleton(AUTOLOAD_NAME)
 
 
@@ -77,55 +85,44 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 		_hide_ghost()
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
 
+	if not _dock_panel.is_tool_active():
+		_hide_ghost()
+		_reset_paint_input()
+		return EditorPlugin.AFTER_GUI_INPUT_PASS
+
+	var armed := _dock_panel.is_input_armed()
+	var paint_mode := _is_paint_mode()
+	var show_ghost := _dock_panel.is_ghost_enabled()
+
 	if event is InputEventMouseButton:
 		var btn := event as InputEventMouseButton
 		if btn.button_index == MOUSE_BUTTON_LEFT:
 			if not btn.pressed and _input_pressed:
 				_handle_paint_release()
-			_update_input_state(btn)
-			if btn.pressed and _is_paint_mode():
+				_reset_paint_input()
+			elif btn.pressed and paint_mode and armed:
+				_input_pressed = true
 				_handle_paint_press(camera, btn.position, root)
-
-	var paint_mode := _is_paint_mode()
-	var raycast_on := _is_raycast_active()
-
-	if not raycast_on and not paint_mode:
-		_hide_ghost()
-		return EditorPlugin.AFTER_GUI_INPUT_PASS
+			elif not btn.pressed:
+				_reset_paint_input()
 
 	if event is InputEventMouseMotion:
 		if _input_pressed:
 			_input_dragging = true
-		if raycast_on:
+		if show_ghost:
 			_cast_and_update_debug(camera, event.position, root)
-		if paint_mode and _input_dragging and _paint_session and _paint_session.is_painting():
+		if paint_mode and _input_dragging and armed and _paint_session and _paint_session.is_painting():
 			_handle_paint_drag(camera, event.position, root)
-	elif event is InputEventMouseButton and raycast_on:
-		_cast_and_update_debug(camera, event.position, root)
+	elif event is InputEventMouseButton and show_ghost:
+		var btn := event as InputEventMouseButton
+		_cast_and_update_debug(camera, btn.position, root)
 
-	if paint_mode and _paint_session and _paint_session.is_painting():
+	if not show_ghost:
+		_hide_ghost()
+
+	if _paint_session and _paint_session.is_painting():
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
-
-
-func get_last_hit() -> Dictionary:
-	return _last_hit
-
-
-func is_input_pressed() -> bool:
-	return _input_pressed
-
-
-func is_input_dragging() -> bool:
-	return _input_dragging
-
-
-func _is_raycast_active() -> bool:
-	if _dock_panel == null:
-		return false
-	if _dock_panel.is_ghost_enabled():
-		return true
-	return _dock_panel.is_modifier_held()
 
 
 func _is_paint_mode() -> bool:
@@ -143,7 +140,11 @@ func _handle_paint_press(camera: Camera3D, screen_pos: Vector2, root: Node) -> v
 	if mesh == null:
 		_dock_panel.set_status("Paint miss — brushable mesh could not be resolved")
 		return
-	_dock_panel.set_context_mesh(mesh)
+	if not Brushable.supports_splat_paint(mesh):
+		_dock_panel.set_status(
+			"Splat paint needs a surface MeshInstance3D — use stack-only on MultiMeshInstance3D"
+		)
+		return
 	var layer := _dock_panel.get_active_stack_layer(mesh)
 	if layer == null:
 		_dock_panel.set_status(
@@ -156,19 +157,14 @@ func _handle_paint_press(camera: Camera3D, screen_pos: Vector2, root: Node) -> v
 	if not _paint_session.is_painting():
 		_dock_panel.set_status("Could not open splat map — check Output panel")
 		return
+	_dock_panel.set_context_mesh(mesh)
 	if hit.get("uv_planar_fallback"):
 		_dock_panel.set_status("Painting with planar UV (no TEX_UV on mesh)")
-	_paint_session.stamp_line(
-		mesh,
-		Vector2(-1.0, -1.0),
-		hit.uv,
-		_dock_panel.get_brush_size(),
-		_dock_panel.get_brush_opacity_percent(),
-		_dock_panel.get_brush_hardness_percent(),
-		layer
-	)
+	_stamp_line(mesh, Vector2(-1.0, -1.0), hit.uv, layer)
 	_dock_panel.refresh_splat_preview(mesh)
+	_dock_panel.refresh_shader_preview(mesh)
 	_dock_panel.update_paint_target_label(layer)
+	Brushable.refresh_splat_uniforms_on_mesh(mesh)
 
 
 func _handle_paint_drag(camera: Camera3D, screen_pos: Vector2, root: Node) -> void:
@@ -183,16 +179,10 @@ func _handle_paint_drag(camera: Camera3D, screen_pos: Vector2, root: Node) -> vo
 	var layer := _dock_panel.get_active_stack_layer(mesh)
 	if layer == null:
 		return
-	_paint_session.stamp_line(
-		mesh,
-		_paint_last_uv,
-		hit.uv,
-		_dock_panel.get_brush_size(),
-		_dock_panel.get_brush_opacity_percent(),
-		_dock_panel.get_brush_hardness_percent(),
-		layer
-	)
+	_stamp_line(mesh, _paint_last_uv, hit.uv, layer)
 	_paint_last_uv = hit.uv
+	Brushable.refresh_splat_uniforms_on_mesh(mesh)
+	_dock_panel.refresh_splat_preview(mesh)
 
 
 func _handle_paint_release() -> void:
@@ -201,9 +191,11 @@ func _handle_paint_release() -> void:
 	var mesh: MeshInstance3D = _paint_session.end_stroke()
 	_paint_last_uv = Vector2(-1.0, -1.0)
 	if mesh:
-		Brushable.refresh_splat_on_mesh(mesh)
+		Brushable.refresh_material_on_mesh(mesh)
+		Brushable.rebuild_grass_fields_for_surface(mesh)
 	if _dock_panel:
 		_dock_panel.refresh_splat_preview(mesh)
+		_dock_panel.refresh_shader_preview(mesh)
 
 
 func _mesh_from_hit(hit: Dictionary) -> MeshInstance3D:
@@ -227,6 +219,16 @@ func _on_scene_changed(_scene_root: Node) -> void:
 	_attach_ghost_to_edited_scene()
 	if _dock_panel:
 		_dock_panel.refresh_shader_stack_ui()
+	_rebuild_grass_fields_in_scene()
+
+
+func _rebuild_grass_fields_in_scene() -> void:
+	var root := get_editor_interface().get_edited_scene_root()
+	if root == null:
+		return
+	for node in root.get_tree().get_nodes_in_group(&"grass_field"):
+		if node.has_method("_request_rebuild"):
+			node._request_rebuild()
 
 
 func _on_selection_changed() -> void:
@@ -234,19 +236,57 @@ func _on_selection_changed() -> void:
 		_dock_panel.refresh_shader_stack_ui()
 
 
-func _on_ghost_settings_changed() -> void:
-	if _ghost == null or _dock_panel == null:
+func _on_inspector_property_edited(_property: StringName) -> void:
+	if _dock_panel == null:
 		return
-	if not _dock_panel.is_ghost_enabled() or _last_hit.is_empty():
+	var edited := get_editor_interface().get_inspector().get_edited_object()
+	if edited is ShaderMaterial:
+		_dock_panel.on_layer_material_edited(edited as ShaderMaterial)
+
+
+func _on_tool_active_changed(active: bool) -> void:
+	if not active:
+		_hide_ghost()
+		_cancel_active_stroke()
+
+
+func _on_ghost_settings_changed() -> void:
+	if _dock_panel == null or not _dock_panel.is_tool_active() or not _dock_panel.is_ghost_enabled():
 		_hide_ghost()
 		return
-	_ghost.update_from_hit(
-		_last_hit,
+	_update_ghost_from_hit(_last_hit)
+
+
+func _stamp_line(
+	mesh: MeshInstance3D,
+	from_uv: Vector2,
+	to_uv: Vector2,
+	layer: GodotASketchShaderStackLayer
+) -> void:
+	_paint_session.stamp_line(
+		mesh,
+		from_uv,
+		to_uv,
 		_dock_panel.get_brush_size(),
 		_dock_panel.get_brush_opacity_percent(),
 		_dock_panel.get_brush_hardness_percent(),
-		_dock_panel.get_brush_mode()
+		layer
 	)
+
+
+func _cancel_active_stroke() -> void:
+	if _paint_session and _paint_session.is_painting():
+		var mesh := _paint_session.end_stroke()
+		if mesh:
+			Brushable.refresh_material_on_mesh(mesh)
+			if _dock_panel:
+				_dock_panel.refresh_splat_preview(mesh)
+	_reset_paint_input()
+
+
+func _reset_paint_input() -> void:
+	_input_pressed = false
+	_input_dragging = false
 
 
 func _attach_ghost_to_edited_scene() -> void:
@@ -296,11 +336,3 @@ func _update_context_mesh_from_hit(hit: Dictionary) -> void:
 func _hide_ghost() -> void:
 	if _ghost:
 		_ghost.hide_brush()
-
-
-func _update_input_state(event: InputEventMouseButton) -> void:
-	if event.button_index != MOUSE_BUTTON_LEFT:
-		return
-	_input_pressed = event.pressed
-	if not event.pressed:
-		_input_dragging = false
