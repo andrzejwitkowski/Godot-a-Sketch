@@ -1,7 +1,6 @@
 extends RefCounted
 class_name GodotASketchPaintSession
 
-const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants.gd")
 const SplatMapAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_map_assign.gd")
 const SplatEngine := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_engine.gd")
 const MAX_STAMPS_PER_LINE := 8
@@ -19,18 +18,13 @@ func begin_stroke(mesh: MeshInstance3D) -> void:
 		return
 	_active_mesh = mesh
 	_painting = true
-	var engine := _engine_for(mesh)
-	engine.ensure_open(map)
-	engine.begin_paint()
+	_engine_for(mesh).ensure_open(map)
 
 
 func end_stroke() -> MeshInstance3D:
 	if not _painting or _active_mesh == null:
 		return null
 	var mesh := _active_mesh
-	var engine: GodotASketchSplatEngine = _engines.get(mesh.get_instance_id())
-	if engine:
-		engine.end_paint()
 	var map: GodotASketchSplatMap = SplatMapAssign.commit_edit(mesh)
 	_painting = false
 	_active_mesh = null
@@ -48,12 +42,15 @@ func stamp_line(
 ) -> void:
 	if mesh == null or layer == null:
 		return
-	var engine: GodotASketchSplatEngine = _engine_for(mesh)
 	var map: GodotASketchSplatMap = SplatMapAssign.working_map(mesh)
 	if map == null:
+		if _painting:
+			push_warning("Godot-a-Sketch: stamp without working splat map — stroke ignored")
+			return
 		map = SplatMapAssign.ensure_map(mesh)
-	if map == null:
-		return
+		if map == null:
+			return
+	var engine: GodotASketchSplatEngine = _engine_for(mesh)
 	engine.ensure_open(map)
 	var radius := _uv_radius(brush_size, map.size.x)
 	var strength := opacity_pct / 100.0

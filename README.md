@@ -39,9 +39,11 @@ Each brushable `MeshInstance3D` owns a **ShaderStack** resource saved as a `.tre
    - **Browse shader…** — pick any `.gdshader` in the project
    - **New from template…** — copy `layer_template.gdshader` to a new file and open it
    Or double-click a shader in **Available shaders** (max **4 layers** — RGBA splat channels).
-3. **Remove**, **Up**, **Down** edit the stack; changes save to the mesh `.tres` immediately. Layer weight is shown read-only; blend mode per layer is used when painting.
-4. **Copy stack** / **Paste stack** duplicate stack data onto another mesh (new `.tres` file).
-5. Click **Refresh** to rescan shaders (validates on refresh; use after adding or editing `.gdshader` files).
+3. **Remove**, **Up**, **Down** edit the stack; changes save to the mesh `.tres` immediately. **Edit layer material** opens the layer’s `ShaderMaterial` for custom uniforms (per mesh).
+4. Layer weight is shown read-only in the list; blend mode per layer is used when painting.
+5. **Shader preview** (dock) shows the selected layer on a sphere; the 3D viewport shows the full stacked material.
+6. **Copy stack** / **Paste stack** duplicate stack data onto another mesh (new `.tres` file).
+7. Click **Refresh** to rescan shaders (validates on refresh; use after adding or editing `.gdshader` files).
 
 The **Available shaders** list shows every `.gdshader` under `res://`. Tags after **Refresh**: `[paint-ready]` = loads and passes splat layer validation; `[contract, fix compile]` = include present but shader does not compile yet; `[generic]` = no contract. Double-click to add to stack. **Insert layer contract include** adds the `#include` (with Undo); it does not wire fragment logic — painting still needs a paint-ready shader (#7/#8).
 
@@ -64,7 +66,7 @@ Each brushable mesh owns a **SplatMap** resource (`.tres`) with an RGBA8 mask im
 - Default resolution: **1024×1024** (override via editor setting `godot_a_sketch/splat/default_size`).
 - If an old splat `.tres` was created when the default was white, delete it under `godot_a_sketch_splats/` and **Unmark → Mark Brushable** to recreate.
 - Painting stamps the mask image directly on mouse drag; saved on mouse release.
-- `SplatMap.to_texture()` returns a `Texture2D` for manual wiring; automatic material binding is **#8**.
+- `SplatMap.to_texture()` returns a `Texture2D` for manual wiring; the addon also binds it automatically via **Material stack** (#8).
 - UV mapping uses mesh `TEX_UV` / `TEX_UV2` when present; otherwise **planar fallback** from hit position (re-mark brushable after addon update to rebuild cache).
 
 ## Raycast
@@ -100,6 +102,14 @@ The ghost node is editor-only and is not intended to be saved with the scene.
 6. Reorder layers — order persisted in `.tres`.
 7. Add new `.gdshader` to project → **Refresh** → shader appears in **Available shaders**.
 8. Legacy editor-settings stack names migrate once to the first edited brushable mesh.
+
+## Manual test plan (Material stack #8)
+
+1. Mark brushable, add two paint-ready layers with different `layer_albedo` textures via **Edit layer material**.
+2. 3D viewport shows both layers blended by splat mask; reorder layers — pass order changes.
+3. Paint mask channel — corresponding layer visibility updates in viewport.
+4. Mesh A and Mesh B with same shader but different custom uniforms — independent after save/reload.
+5. Dock **Shader preview** updates when selecting each stack layer.
 
 ## Manual test plan (Splat Map)
 

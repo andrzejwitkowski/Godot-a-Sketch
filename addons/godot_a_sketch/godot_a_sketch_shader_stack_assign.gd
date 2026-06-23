@@ -6,20 +6,23 @@ const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants
 const ShaderStack := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack.gd")
 
 
-static func stack_path(mesh: MeshInstance3D) -> String:
-	if mesh == null or not mesh.has_meta(Constants.SHADER_STACK_META):
+static func stack_path(target: Node3D) -> String:
+	if target == null or not target.has_meta(Constants.SHADER_STACK_META):
 		return ""
-	return String(mesh.get_meta(Constants.SHADER_STACK_META))
+	return String(target.get_meta(Constants.SHADER_STACK_META))
 
 
-static func load_stack(mesh: MeshInstance3D) -> GodotASketchShaderStack:
-	var path := stack_path(mesh)
+static func load_stack(target: Node3D) -> GodotASketchShaderStack:
+	var path := stack_path(target)
 	if path.is_empty() or not ResourceLoader.exists(path):
 		return null
 	var stack := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GodotASketchShaderStack
 	if _is_placeholder(stack):
 		push_warning("Godot-a-Sketch: stale stack resource at %s — will recreate" % path)
 		return null
+	for layer in stack.layers:
+		if layer:
+			layer.migrate_shader_to_material()
 	return stack
 
 
@@ -27,16 +30,16 @@ static func _is_placeholder(resource: Resource) -> bool:
 	return resource == null or resource.get_script() == null
 
 
-static func assign_stack(mesh: MeshInstance3D, stack: GodotASketchShaderStack, path: String = "") -> String:
-	if mesh == null or stack == null:
+static func assign_stack(target: Node3D, stack: GodotASketchShaderStack, path: String = "") -> String:
+	if target == null or stack == null:
 		return "Invalid mesh or stack"
 	var errors := stack.validate()
 	if not errors.is_empty():
 		return errors[0]
 	if path.is_empty() or not Constants.is_usable_resource_path(path):
-		path = stack_path(mesh)
+		path = stack_path(target)
 	if path.is_empty() or not Constants.is_usable_resource_path(path):
-		path = _default_path(mesh)
+		path = _default_path(target)
 	if ResourceLoader.exists(path) and not ResourceLoader.exists(path, "GodotASketchShaderStack"):
 		return "Refusing to overwrite non-stack resource at %s" % path
 	var err := _ensure_parent_dir(path)
@@ -45,30 +48,33 @@ static func assign_stack(mesh: MeshInstance3D, stack: GodotASketchShaderStack, p
 	var save_err := ResourceSaver.save(stack, path)
 	if save_err != OK:
 		return "Failed to save stack: %s" % error_string(save_err)
-	mesh.set_meta(Constants.SHADER_STACK_META, path)
+	target.set_meta(Constants.SHADER_STACK_META, path)
 	EditorInterface.mark_scene_as_unsaved()
+	var fs := EditorInterface.get_resource_filesystem()
+	if fs:
+		fs.call_deferred("scan")
 	return ""
 
 
-static func ensure_stack(mesh: MeshInstance3D) -> GodotASketchShaderStack:
-	var stack := load_stack(mesh)
+static func ensure_stack(target: Node3D) -> GodotASketchShaderStack:
+	var stack := load_stack(target)
 	if stack and not _is_placeholder(stack):
 		return stack
 	stack = ShaderStack.new()
-	if assign_stack(mesh, stack) != "":
+	if assign_stack(target, stack) != "":
 		return null
 	return stack
 
 
-static func assign_stack_copy(mesh: MeshInstance3D, stack: GodotASketchShaderStack) -> String:
-	return assign_stack(mesh, stack, _default_path(mesh))
+static func assign_stack_copy(target: Node3D, stack: GodotASketchShaderStack) -> String:
+	return assign_stack(target, stack, _default_path(target))
 
 
-static func detach_stack(mesh: MeshInstance3D, delete_file: bool = true) -> void:
-	if mesh == null or not mesh.has_meta(Constants.SHADER_STACK_META):
+static func detach_stack(target: Node3D, delete_file: bool = true) -> void:
+	if target == null or not target.has_meta(Constants.SHADER_STACK_META):
 		return
-	var path := String(mesh.get_meta(Constants.SHADER_STACK_META))
-	mesh.remove_meta(Constants.SHADER_STACK_META)
+	var path := String(target.get_meta(Constants.SHADER_STACK_META))
+	target.remove_meta(Constants.SHADER_STACK_META)
 	if not delete_file or not path.begins_with(Constants.SHADER_STACK_DEFAULT_DIR):
 		return
 	var abs := ProjectSettings.globalize_path(path)
@@ -82,8 +88,8 @@ static func detach_stack(mesh: MeshInstance3D, delete_file: bool = true) -> void
 		fs.call_deferred("scan")
 
 
-static func _default_path(mesh: MeshInstance3D) -> String:
-	return Constants.SHADER_STACK_DEFAULT_DIR.path_join("%s.tres" % Constants.mesh_resource_slug(mesh))
+static func _default_path(target: Node3D) -> String:
+	return Constants.SHADER_STACK_DEFAULT_DIR.path_join("%s.tres" % Constants.paint_target_slug(target))
 
 
 static func _ensure_parent_dir(path: String) -> String:

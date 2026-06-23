@@ -15,8 +15,10 @@ const RAY_LENGTH := 10000.0
 
 const GHOST_NODE_NAME := "_GodotASketchGhost"
 const SETTINGS_SHOW_GHOST := "godot_a_sketch/ghost/enabled"
+const SETTINGS_TOOL_ACTIVE := "godot_a_sketch/input/tool_active"
 const SETTINGS_BRUSH_MODE := "godot_a_sketch/brush/mode"
 const DEFAULT_SHOW_GHOST := true
+const DEFAULT_TOOL_ACTIVE := false
 
 enum BrushMode { PAINT, SCULPT }
 
@@ -27,32 +29,31 @@ const SHADER_STACK_META := "godot_a_sketch_shader_stack_path"
 const SHADER_STACK_DEFAULT_DIR := "res://godot_a_sketch_stacks/"
 const BUNDLED_SHADER_DIR := "res://addons/godot_a_sketch/shaders/"
 const LAYER_TEMPLATE_PATH := "res://addons/godot_a_sketch/shaders/layer_template.gdshader"
-const SETTINGS_STACK_LEGACY_NAMES := "godot_a_sketch/stack/names"
-const SETTINGS_STACK_MIGRATED := "godot_a_sketch/stack/migrated_v5"
 
 const SPLAT_MAP_META := "godot_a_sketch_splat_map_path"
 const SPLAT_MAP_DEFAULT_DIR := "res://godot_a_sketch_splats/"
 const SETTINGS_SPLAT_SIZE := "godot_a_sketch/splat/default_size"
 const DEFAULT_SPLAT_SIZE := 1024
 const MESH_UV_META := "godot_a_sketch_mesh_uv_cache"
+const BASE_OVERRIDE_META := "godot_a_sketch_base_material_override"
 
 
-static func mesh_resource_slug(mesh: MeshInstance3D) -> String:
-	if mesh == null:
+static func paint_target_slug(target: Node3D) -> String:
+	if target == null:
 		return "unknown_mesh"
 	var scene_root := EditorInterface.get_edited_scene_root()
 	var scene_name := _scene_file_slug(scene_root)
 	if scene_root == null:
-		return "%s__%s_%d" % [scene_name, String(mesh.name).validate_filename(), mesh.get_instance_id()]
-	if mesh == scene_root:
-		return "%s__%s" % [scene_name, String(mesh.name).validate_filename()]
+		return "%s__%s_%d" % [scene_name, String(target.name).validate_filename(), target.get_instance_id()]
+	if target == scene_root:
+		return "%s__%s" % [scene_name, String(target.name).validate_filename()]
 	var parts: PackedStringArray = []
-	var node: Node = mesh
+	var node: Node = target
 	while node and node != scene_root:
 		parts.append(_safe_node_name(node.name))
 		node = node.get_parent()
 	if node != scene_root:
-		return "%s__%s_%d" % [scene_name, String(mesh.name).validate_filename(), mesh.get_instance_id()]
+		return "%s__%s_%d" % [scene_name, String(target.name).validate_filename(), target.get_instance_id()]
 	parts.reverse()
 	return "%s__%s" % [scene_name, "_".join(parts)]
 
