@@ -80,8 +80,8 @@ func _apply_appearance(
 	_mesh_instance.scale = Vector3(diameter, diameter, 1.0)
 
 	var brush_color: Color = GodotASketchConstants.COLOR_PAINT
-	if mode == GodotASketchConstants.BrushMode.SCULPT:
-		brush_color = GodotASketchConstants.COLOR_SCULPT
+	if mode == GodotASketchConstants.BrushMode.ERASE:
+		brush_color = GodotASketchConstants.COLOR_ERASE
 
 	_material.set_shader_parameter("brush_color", brush_color)
 	_material.set_shader_parameter("opacity", opacity_pct / 100.0)

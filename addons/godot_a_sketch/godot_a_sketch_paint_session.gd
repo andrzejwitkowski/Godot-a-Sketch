@@ -2,10 +2,8 @@ extends RefCounted
 class_name GodotASketchPaintSession
 
 const SplatMapAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_map_assign.gd")
-const SplatEngine := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_engine.gd")
 const MAX_STAMPS_PER_LINE := 8
 
-var _engines: Dictionary = {}
 var _active_mesh: MeshInstance3D
 var _painting := false
 
@@ -18,7 +16,6 @@ func begin_stroke(mesh: MeshInstance3D) -> void:
 		return
 	_active_mesh = mesh
 	_painting = true
-	_engine_for(mesh).ensure_open(map)
 
 
 func end_stroke() -> MeshInstance3D:
@@ -38,7 +35,8 @@ func stamp_line(
 	brush_size: float,
 	opacity_pct: float,
 	hardness_pct: float,
-	layer: GodotASketchShaderStackLayer
+	layer: GodotASketchShaderStackLayer,
+	erase: bool = false
 ) -> void:
 	if mesh == null or layer == null:
 		return
@@ -50,37 +48,30 @@ func stamp_line(
 		map = SplatMapAssign.ensure_map(mesh)
 		if map == null:
 			return
-	var engine: GodotASketchSplatEngine = _engine_for(mesh)
-	engine.ensure_open(map)
 	var radius := _uv_radius(brush_size, map.size.x)
 	var strength := opacity_pct / 100.0
 	var hardness := hardness_pct / 100.0
 	var channel := clampi(layer.mask_channel, 0, 3)
 	var blend := int(layer.blend_mode)
 	if from_uv.x < 0.0:
-		engine.stamp(to_uv, radius, strength, hardness, channel, blend)
+		GodotASketchSplatEngine.stamp(map, to_uv, radius, strength, hardness, channel, blend, erase)
 		return
 	var delta := to_uv - from_uv
 	var dist := delta.length()
 	if dist < 0.0001:
-		engine.stamp(to_uv, radius, strength, hardness, channel, blend)
+		GodotASketchSplatEngine.stamp(map, to_uv, radius, strength, hardness, channel, blend, erase)
 		return
 	var spacing := maxf(radius * 0.25, 0.001)
 	var steps := mini(maxi(1, int(ceil(dist / spacing))), MAX_STAMPS_PER_LINE)
 	for i in range(steps + 1):
 		var t := float(i) / float(steps)
-		engine.stamp(from_uv.lerp(to_uv, t), radius, strength, hardness, channel, blend)
+		GodotASketchSplatEngine.stamp(
+			map, from_uv.lerp(to_uv, t), radius, strength, hardness, channel, blend, erase
+		)
 
 
 func is_painting() -> bool:
 	return _painting
-
-
-func _engine_for(mesh: MeshInstance3D) -> GodotASketchSplatEngine:
-	var id := mesh.get_instance_id()
-	if not _engines.has(id):
-		_engines[id] = SplatEngine.new()
-	return _engines[id] as GodotASketchSplatEngine
 
 
 static func _uv_radius(brush_size: float, map_width: int) -> float:

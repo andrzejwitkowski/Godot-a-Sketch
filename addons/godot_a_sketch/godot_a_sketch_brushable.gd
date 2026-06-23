@@ -295,7 +295,7 @@ static func _splat_texture_for_mesh(target: Node3D) -> Texture2D:
 		map = SplatMapAssign.load_map(target)
 	if map == null:
 		return null
-	return map.to_texture()
+	return map.runtime_texture()
 
 
 static func _apply_layer_contract(mat: ShaderMaterial, layer, map_tex: Texture2D) -> void:
