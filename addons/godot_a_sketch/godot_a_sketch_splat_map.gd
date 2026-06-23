@@ -5,6 +5,13 @@ class_name GodotASketchSplatMap
 @export var size: Vector2i = Vector2i(1024, 1024)
 @export var image: Image
 
+var _runtime_tex: ImageTexture
+var _preview_tex: ImageTexture
+var _preview_img: Image
+var _preview_src: Image
+var _preview_dirty := Rect2i()
+var _preview_channel := -999
+
 
 static func create_default(resolution: int = 1024) -> GodotASketchSplatMap:
 	var map := GodotASketchSplatMap.new()
@@ -14,35 +21,148 @@ static func create_default(resolution: int = 1024) -> GodotASketchSplatMap:
 	return map
 
 
+func invalidate_caches() -> void:
+	_runtime_tex = null
+	_preview_tex = null
+	_preview_img = null
+	_preview_src = null
+	_preview_dirty = Rect2i()
+	_preview_channel = -999
+
+
 func to_texture() -> ImageTexture:
+	return runtime_texture()
+
+
+func runtime_texture() -> ImageTexture:
 	if image == null:
 		return null
-	return ImageTexture.create_from_image(image)
+	ensure_rgba8()
+	if _runtime_tex == null:
+		_runtime_tex = ImageTexture.create_from_image(image)
+	else:
+		_runtime_tex.update(image)
+	return _runtime_tex
 
 
 const PREVIEW_SIZE := 256
 
 
 func to_preview_texture(channel: int = -1) -> ImageTexture:
-	if image == null or image.is_empty():
+	return preview_texture(channel)
+
+
+func preview_texture(channel: int = -1) -> ImageTexture:
+	if image == null or image.get_width() < 1 or image.get_height() < 1:
 		return null
 	ensure_rgba8()
-	var vis: Image = image.duplicate()
-	if vis.get_width() > PREVIEW_SIZE:
-		vis.resize(PREVIEW_SIZE, PREVIEW_SIZE, Image.INTERPOLATE_NEAREST)
-	var w: int = vis.get_width()
-	var h: int = vis.get_height()
-	for y in range(h):
-		for x in range(w):
-			var c: Color = vis.get_pixel(x, y)
-			var v: float
-			if channel < 0:
-				v = maxf(maxf(c.r, c.g), c.b)
+	if _preview_img == null:
+		_preview_img = Image.create(PREVIEW_SIZE, PREVIEW_SIZE, false, Image.FORMAT_RGBA8)
+	if channel != _preview_channel:
+		_preview_channel = channel
+		_preview_dirty = Rect2i(0, 0, PREVIEW_SIZE, PREVIEW_SIZE)
+	_sync_preview_channel(channel)
+	if _preview_tex == null:
+		_preview_tex = ImageTexture.create_from_image(_preview_img)
+	else:
+		_preview_tex.update(_preview_img)
+	return _preview_tex
+
+
+func prewarm(channel: int = -1) -> void:
+	if image == null or image.get_width() < 1:
+		return
+	ensure_rgba8()
+	_ensure_preview_src()
+	_preview_dirty = Rect2i(0, 0, PREVIEW_SIZE, PREVIEW_SIZE)
+	preview_texture(channel)
+	runtime_texture()
+
+
+func patch_preview_from_stamp(x0: int, y0: int, x1: int, y1: int) -> void:
+	if image == null:
+		return
+	_ensure_preview_src()
+	if _preview_src == null:
+		return
+	var w := image.get_width()
+	var h := image.get_height()
+	if w < 1 or h < 1:
+		return
+	var scale_x := float(PREVIEW_SIZE) / float(w)
+	var scale_y := float(PREVIEW_SIZE) / float(h)
+	var px0 := clampi(int(floor(float(x0) * scale_x)), 0, PREVIEW_SIZE - 1)
+	var py0 := clampi(int(floor(float(y0) * scale_y)), 0, PREVIEW_SIZE - 1)
+	var px1 := clampi(int(ceil(float(x1 + 1) * scale_x)), px0 + 1, PREVIEW_SIZE)
+	var py1 := clampi(int(ceil(float(y1 + 1) * scale_y)), py0 + 1, PREVIEW_SIZE)
+	var rw := x1 - x0 + 1
+	var rh := y1 - y0 + 1
+	var patch := image.get_region(Rect2i(x0, y0, rw, rh))
+	var ptw := px1 - px0
+	var pth := py1 - py0
+	if patch.get_width() != ptw or patch.get_height() != pth:
+		patch.resize(ptw, pth, Image.INTERPOLATE_NEAREST)
+	_preview_src.blit_rect(patch, Rect2i(0, 0, ptw, pth), Vector2i(px0, py0))
+	_union_preview_dirty(px0, py0, px1, py1)
+
+
+func _ensure_preview_src() -> void:
+	if _preview_src != null:
+		return
+	if image == null:
+		return
+	_preview_src = image.duplicate()
+	if _preview_src.get_width() != PREVIEW_SIZE or _preview_src.get_height() != PREVIEW_SIZE:
+		_preview_src.resize(PREVIEW_SIZE, PREVIEW_SIZE, Image.INTERPOLATE_NEAREST)
+
+
+func _union_preview_dirty(px0: int, py0: int, px1: int, py1: int) -> void:
+	var patch := Rect2i(px0, py0, px1 - px0, py1 - py0)
+	if _preview_dirty.size == Vector2i.ZERO:
+		_preview_dirty = patch
+		return
+	var ox0 := _preview_dirty.position.x
+	var oy0 := _preview_dirty.position.y
+	var ox1 := ox0 + _preview_dirty.size.x
+	var oy1 := oy0 + _preview_dirty.size.y
+	var nx0 := mini(ox0, px0)
+	var ny0 := mini(oy0, py0)
+	var nx1 := maxi(ox1, px1)
+	var ny1 := maxi(oy1, py1)
+	_preview_dirty = Rect2i(nx0, ny0, nx1 - nx0, ny1 - ny0)
+
+
+func _sync_preview_channel(channel: int) -> void:
+	_ensure_preview_src()
+	if _preview_src == null:
+		return
+	var src: PackedByteArray = _preview_src.get_data()
+	if _preview_img == null:
+		_preview_img = Image.create(PREVIEW_SIZE, PREVIEW_SIZE, false, Image.FORMAT_RGBA8)
+	var dst: PackedByteArray = _preview_img.get_data()
+	var ch := clampi(channel, 0, 3)
+	var use_channel := channel >= 0
+	var rect := _preview_dirty if _preview_dirty.size != Vector2i.ZERO else Rect2i(0, 0, PREVIEW_SIZE, PREVIEW_SIZE)
+	var x0 := rect.position.x
+	var y0 := rect.position.y
+	var x1 := rect.position.x + rect.size.x
+	var y1 := rect.position.y + rect.size.y
+	for y in range(y0, y1):
+		for x in range(x0, x1):
+			var i := y * PREVIEW_SIZE + x
+			var src_base := i * 4
+			var dst_base := i * 4
+			var v: int
+			if use_channel:
+				v = src[src_base + ch]
 			else:
-				var comps := [c.r, c.g, c.b, c.a]
-				v = comps[clampi(channel, 0, 3)]
-			vis.set_pixel(x, y, Color(v, v, v, 1.0))
-	return ImageTexture.create_from_image(vis)
+				v = maxi(maxi(src[src_base], src[src_base + 1]), src[src_base + 2])
+			dst[dst_base] = v
+			dst[dst_base + 1] = v
+			dst[dst_base + 2] = v
+			dst[dst_base + 3] = 255
+	_preview_img.set_data(PREVIEW_SIZE, PREVIEW_SIZE, false, Image.FORMAT_RGBA8, dst)
+	_preview_dirty = Rect2i()
 
 
 func ensure_rgba8() -> void:
@@ -50,6 +170,7 @@ func ensure_rgba8() -> void:
 		return
 	if image.get_format() != Image.FORMAT_RGBA8:
 		image.convert(Image.FORMAT_RGBA8)
+		invalidate_caches()
 
 
 func duplicate_map() -> GodotASketchSplatMap:

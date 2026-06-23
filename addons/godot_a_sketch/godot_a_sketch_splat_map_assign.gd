@@ -6,6 +6,7 @@ const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants
 const SplatMap := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_map.gd")
 
 static var _working: Dictionary = {}
+static var _by_path: Dictionary = {}
 
 
 static func map_path(target: Node3D) -> String:
@@ -21,11 +22,24 @@ static func load_map(target: Node3D) -> GodotASketchSplatMap:
 	var path := map_path(target)
 	if path.is_empty() or not ResourceLoader.exists(path):
 		return null
-	var map := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GodotASketchSplatMap
+	if _by_path.has(path):
+		return _by_path[path]
+	var map := ResourceLoader.load(path) as GodotASketchSplatMap
 	if map == null or map.get_script() == null:
 		return null
 	map.ensure_rgba8()
+	_by_path[path] = map
 	return map
+
+
+static func reload_map(target: Node3D) -> GodotASketchSplatMap:
+	if target == null:
+		return null
+	var path := map_path(target)
+	if not path.is_empty():
+		_by_path.erase(path)
+	_working.erase(target.get_instance_id())
+	return load_map(target)
 
 
 static func working_map(target: Node3D) -> GodotASketchSplatMap:
@@ -58,10 +72,13 @@ static func commit_edit(target: Node3D) -> GodotASketchSplatMap:
 	var map: GodotASketchSplatMap = _working.get(id)
 	if map == null:
 		return load_map(target)
+	var path := map_path(target)
 	if assign_map(target, map) != "":
 		push_warning("Godot-a-Sketch: splat map save failed — stroke kept in memory")
 		return map
 	_working.erase(id)
+	if not path.is_empty():
+		_by_path[path] = map
 	return map
 
 
@@ -75,8 +92,9 @@ static func default_resolution() -> int:
 static func assign_map(target: Node3D, map: GodotASketchSplatMap, path: String = "") -> String:
 	if target == null or map == null:
 		return "Invalid mesh or splat map"
+	var old_path := map_path(target)
 	if path.is_empty() or not Constants.is_usable_resource_path(path):
-		path = map_path(target)
+		path = old_path
 	if path.is_empty() or not Constants.is_usable_resource_path(path):
 		path = _default_path(target)
 	if ResourceLoader.exists(path) and not ResourceLoader.exists(path, "GodotASketchSplatMap"):
@@ -87,11 +105,12 @@ static func assign_map(target: Node3D, map: GodotASketchSplatMap, path: String =
 	var save_err := ResourceSaver.save(map, path)
 	if save_err != OK:
 		return "Failed to save splat map: %s" % error_string(save_err)
+	if not old_path.is_empty() and old_path != path:
+		_by_path.erase(old_path)
 	target.set_meta(Constants.SPLAT_MAP_META, path)
+	_by_path[path] = map
 	EditorInterface.mark_scene_as_unsaved()
-	var fs := EditorInterface.get_resource_filesystem()
-	if fs:
-		fs.call_deferred("scan")
+	_notify_filesystem(path)
 	return ""
 
 
@@ -111,10 +130,12 @@ static func ensure_map(target: Node3D) -> GodotASketchSplatMap:
 static func detach_map(target: Node3D, delete_file: bool = true) -> void:
 	if target == null:
 		return
+	var path := map_path(target)
 	_working.erase(target.get_instance_id())
+	if not path.is_empty():
+		_by_path.erase(path)
 	if not target.has_meta(Constants.SPLAT_MAP_META):
 		return
-	var path := String(target.get_meta(Constants.SPLAT_MAP_META))
 	target.remove_meta(Constants.SPLAT_MAP_META)
 	if not delete_file or not path.begins_with(Constants.SPLAT_MAP_DEFAULT_DIR):
 		return
@@ -124,9 +145,7 @@ static func detach_map(target: Node3D, delete_file: bool = true) -> void:
 	if DirAccess.remove_absolute(abs) != OK:
 		push_warning("Godot-a-Sketch: could not delete splat map %s" % path)
 		return
-	var fs := EditorInterface.get_resource_filesystem()
-	if fs:
-		fs.call_deferred("scan")
+	_notify_filesystem(path)
 
 
 static func _default_path(target: Node3D) -> String:
@@ -141,3 +160,10 @@ static func _ensure_parent_dir(path: String) -> String:
 	if err != OK:
 		return "Could not create directory %s" % dir_path
 	return ""
+
+
+static func _notify_filesystem(path: String) -> void:
+	var fs := EditorInterface.get_resource_filesystem()
+	if fs == null:
+		return
+	fs.call_deferred("update_file", path)

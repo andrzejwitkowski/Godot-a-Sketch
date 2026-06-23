@@ -21,6 +21,9 @@ var _last_hit: Dictionary = {}
 var _paint_last_uv := Vector2(-1.0, -1.0)
 var _input_pressed := false
 var _input_dragging := false
+var _uniform_refresh_pending := false
+var _pending_uniform_mesh: MeshInstance3D
+var _canvas_stroke_mesh: MeshInstance3D
 
 
 func _enter_tree() -> void:
@@ -31,6 +34,9 @@ func _enter_tree() -> void:
 	_dock.add_child(panel)
 	_dock_panel.ghost_settings_changed.connect(_on_ghost_settings_changed)
 	_dock_panel.tool_active_changed.connect(_on_tool_active_changed)
+	_dock_panel.splat_stroke_begin.connect(_on_splat_canvas_stroke_begin)
+	_dock_panel.splat_stroke_uv.connect(_on_splat_canvas_stroke_uv)
+	_dock_panel.splat_stroke_end.connect(_on_splat_canvas_stroke_end)
 	_dock.title = "Godot-a-Sketch"
 	_dock.default_slot = EditorDock.DOCK_SLOT_LEFT_UL
 	_dock.available_layouts = EditorDock.DOCK_LAYOUT_VERTICAL | EditorDock.DOCK_LAYOUT_FLOATING
@@ -65,6 +71,12 @@ func _exit_tree() -> void:
 			_dock_panel.ghost_settings_changed.disconnect(_on_ghost_settings_changed)
 		if _dock_panel.tool_active_changed.is_connected(_on_tool_active_changed):
 			_dock_panel.tool_active_changed.disconnect(_on_tool_active_changed)
+		if _dock_panel.splat_stroke_begin.is_connected(_on_splat_canvas_stroke_begin):
+			_dock_panel.splat_stroke_begin.disconnect(_on_splat_canvas_stroke_begin)
+		if _dock_panel.splat_stroke_uv.is_connected(_on_splat_canvas_stroke_uv):
+			_dock_panel.splat_stroke_uv.disconnect(_on_splat_canvas_stroke_uv)
+		if _dock_panel.splat_stroke_end.is_connected(_on_splat_canvas_stroke_end):
+			_dock_panel.splat_stroke_end.disconnect(_on_splat_canvas_stroke_end)
 	if _ghost:
 		if _ghost.get_parent():
 			_ghost.get_parent().remove_child(_ghost)
@@ -96,7 +108,7 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
 
 	var armed := _dock_panel.is_input_armed()
-	var paint_mode := _is_paint_mode()
+	var paint_mode := _is_splat_stroke_mode()
 	var show_ghost := _dock_panel.is_ghost_enabled()
 
 	if event is InputEventMouseButton:
@@ -130,8 +142,15 @@ func _forward_3d_gui_input(camera: Camera3D, event: InputEvent) -> int:
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
 
 
-func _is_paint_mode() -> bool:
-	return _dock_panel != null and _dock_panel.get_brush_mode() == Constants.BrushMode.PAINT
+func _is_splat_stroke_mode() -> bool:
+	if _dock_panel == null:
+		return false
+	var mode := _dock_panel.get_brush_mode()
+	return mode == Constants.BrushMode.PAINT or mode == Constants.BrushMode.ERASE
+
+
+func _is_erase_mode() -> bool:
+	return _dock_panel != null and _dock_panel.get_brush_mode() == Constants.BrushMode.ERASE
 
 
 func _handle_paint_press(camera: Camera3D, screen_pos: Vector2, root: Node) -> void:
@@ -166,8 +185,7 @@ func _handle_paint_press(camera: Camera3D, screen_pos: Vector2, root: Node) -> v
 	if hit.get("uv_planar_fallback"):
 		_dock_panel.set_status("Painting with planar UV (no TEX_UV on mesh)")
 	_stamp_line(mesh, Vector2(-1.0, -1.0), hit.uv, layer)
-	_dock_panel.refresh_splat_preview(mesh)
-	_dock_panel.refresh_shader_preview(mesh)
+	_dock_panel.refresh_splat_canvas(mesh)
 	_dock_panel.update_paint_target_label(layer)
 	Brushable.refresh_splat_uniforms_on_mesh(mesh)
 
@@ -186,21 +204,84 @@ func _handle_paint_drag(camera: Camera3D, screen_pos: Vector2, root: Node) -> vo
 		return
 	_stamp_line(mesh, _paint_last_uv, hit.uv, layer)
 	_paint_last_uv = hit.uv
-	Brushable.refresh_splat_uniforms_on_mesh(mesh)
-	_dock_panel.refresh_splat_preview(mesh)
+	_request_splat_uniform_refresh(mesh)
+	_dock_panel.refresh_splat_canvas(mesh)
+
+
+func _request_splat_uniform_refresh(mesh: MeshInstance3D) -> void:
+	if mesh == null:
+		return
+	_pending_uniform_mesh = mesh
+	if _uniform_refresh_pending:
+		return
+	_uniform_refresh_pending = true
+	call_deferred("_flush_splat_uniform_refresh")
+
+
+func _flush_splat_uniform_refresh() -> void:
+	_uniform_refresh_pending = false
+	var mesh := _pending_uniform_mesh
+	_pending_uniform_mesh = null
+	if mesh:
+		Brushable.refresh_splat_uniforms_on_mesh(mesh)
+
+
+func _finish_splat_stroke() -> void:
+	if _paint_session == null or not _paint_session.is_painting():
+		_canvas_stroke_mesh = null
+		return
+	var mesh: MeshInstance3D = _paint_session.end_stroke()
+	_canvas_stroke_mesh = null
+	_paint_last_uv = Vector2(-1.0, -1.0)
+	if mesh:
+		_flush_splat_uniform_refresh()
+		Brushable.refresh_splat_uniforms_on_mesh(mesh)
+		Brushable.rebuild_grass_fields_for_surface(mesh)
+	if _dock_panel:
+		_dock_panel.flush_splat_canvas(mesh)
+
+
+func _on_splat_canvas_stroke_begin() -> void:
+	if _dock_panel == null or _paint_session == null:
+		return
+	var mesh := _dock_panel.get_target_mesh()
+	if mesh == null or not mesh is MeshInstance3D:
+		return
+	if not Brushable.supports_splat_paint(mesh):
+		return
+	var layer := _dock_panel.get_active_stack_layer(mesh)
+	if layer == null:
+		_dock_panel.set_status("Select a stack layer to edit the splat mask")
+		return
+	_paint_session.begin_stroke(mesh as MeshInstance3D)
+	if not _paint_session.is_painting():
+		_dock_panel.set_status("Could not open splat map — check Output panel")
+		return
+	_canvas_stroke_mesh = mesh as MeshInstance3D
+	_paint_last_uv = Vector2(-1.0, -1.0)
+
+
+func _on_splat_canvas_stroke_uv(from_uv: Vector2, to_uv: Vector2) -> void:
+	if _dock_panel == null or _paint_session == null or not _paint_session.is_painting():
+		return
+	var mesh := _canvas_stroke_mesh
+	if mesh == null:
+		return
+	var layer := _dock_panel.get_active_stack_layer(mesh)
+	if layer == null:
+		return
+	_stamp_line(mesh, from_uv, to_uv, layer)
+	_paint_last_uv = to_uv
+	_request_splat_uniform_refresh(mesh)
+	_dock_panel.refresh_splat_canvas(mesh)
 
 
 func _handle_paint_release() -> void:
-	if _paint_session == null or not _paint_session.is_painting():
-		return
-	var mesh: MeshInstance3D = _paint_session.end_stroke()
-	_paint_last_uv = Vector2(-1.0, -1.0)
-	if mesh:
-		Brushable.refresh_material_on_mesh(mesh)
-		Brushable.rebuild_grass_fields_for_surface(mesh)
-	if _dock_panel:
-		_dock_panel.refresh_splat_preview(mesh)
-		_dock_panel.refresh_shader_preview(mesh)
+	_finish_splat_stroke()
+
+
+func _on_splat_canvas_stroke_end() -> void:
+	_finish_splat_stroke()
 
 
 func _mesh_from_hit(hit: Dictionary) -> MeshInstance3D:
@@ -275,7 +356,8 @@ func _stamp_line(
 		_dock_panel.get_brush_size(),
 		_dock_panel.get_brush_opacity_percent(),
 		_dock_panel.get_brush_hardness_percent(),
-		layer
+		layer,
+		_is_erase_mode()
 	)
 
 
@@ -283,10 +365,11 @@ func _cancel_active_stroke() -> void:
 	if _paint_session and _paint_session.is_painting():
 		var mesh := _paint_session.end_stroke()
 		if mesh:
-			Brushable.refresh_material_on_mesh(mesh)
+			Brushable.refresh_splat_uniforms_on_mesh(mesh)
 			if _dock_panel:
-				_dock_panel.refresh_splat_preview(mesh)
+				_dock_panel.refresh_splat_canvas(mesh)
 	_reset_paint_input()
+	_canvas_stroke_mesh = null
 
 
 func _reset_paint_input() -> void:
