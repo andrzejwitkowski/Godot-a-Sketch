@@ -61,7 +61,7 @@ func stamp_line(
 	var strength := opacity_pct / 100.0
 	var hardness := hardness_pct / 100.0
 	var blend := int(layer.paint_blend_mode)
-	var channel := clampi(layer.mask_channel, 0, 3)
+	var channel := 0
 	if from_uv.x < 0.0:
 		GodotASketchSplatEngine.stamp(map, to_uv, radius, strength, hardness, channel, blend, erase)
 		return

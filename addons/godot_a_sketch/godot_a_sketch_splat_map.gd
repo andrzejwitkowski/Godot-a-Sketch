@@ -22,13 +22,16 @@ static func create_default(resolution: int = 256) -> GodotASketchSplatMap:
 
 
 static func from_channel(source: GodotASketchSplatMap, channel: int) -> GodotASketchSplatMap:
-	var map := create_default(source.size.x)
 	if source == null or source.image == null:
-		return map
+		return create_default()
 	source.ensure_rgba8()
 	var ch := clampi(channel, 0, 3)
-	var w := source.image.get_width()
-	var h := source.image.get_height()
+	var w: int = source.image.get_width()
+	var h: int = source.image.get_height()
+	var map := create_default(maxi(w, 1))
+	if map.image.get_width() != w or map.image.get_height() != h:
+		map.image = Image.create(w, h, false, Image.FORMAT_RGBA8)
+		map.size = Vector2i(w, h)
 	var src: PackedByteArray = source.image.get_data()
 	var dst: PackedByteArray = map.image.get_data()
 	for y in h:
@@ -210,7 +213,7 @@ func resize_to(resolution: int) -> void:
 		image.fill(Color.BLACK)
 	elif image.get_width() != resolution or image.get_height() != resolution:
 		ensure_rgba8()
-		image.resize(resolution, resolution, Image.INTERPOLATE_BILINEAR)
+		image.resize(resolution, resolution, Image.INTERPOLATE_NEAREST)
 	size = Vector2i(resolution, resolution)
 	invalidate_caches()
 
@@ -239,7 +242,8 @@ static func self_check_from_channel() -> bool:
 static func self_check_resize() -> bool:
 	var map := create_default(4)
 	var data := map.image.get_data()
-	data[0] = 255
+	for i in data.size():
+		data[i] = 255 if i % 4 != 3 else 255
 	map.image.set_data(4, 4, false, Image.FORMAT_RGBA8, data)
 	map.resize_to(2)
 	return map.size == Vector2i(2, 2) and map.image.get_pixel(0, 0).r > 0.9

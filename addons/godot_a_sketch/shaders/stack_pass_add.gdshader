@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_add, cull_back;
+render_mode blend_add, cull_back, depth_test_disabled, depth_draw_never;
 
 #include "res://addons/godot_a_sketch/shaders/layer_common.gdshaderinc"
 

@@ -5,6 +5,7 @@ const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants
 const EPS := 0.0005
 
 static var _face_uv_cache: Dictionary = {}
+static var _face_uv_meta: Dictionary = {}
 
 
 static func cache(mesh_instance: MeshInstance3D) -> void:
@@ -13,6 +14,7 @@ static func cache(mesh_instance: MeshInstance3D) -> void:
 	var triangle_mesh: TriangleMesh = _triangle_mesh_for(mesh_instance)
 	if triangle_mesh == null:
 		_face_uv_cache.erase(_mesh_key(mesh_instance))
+		_face_uv_meta.erase(_mesh_key(mesh_instance))
 		_strip_persisted_uv_meta(mesh_instance)
 		return
 	var faces: PackedVector3Array = triangle_mesh.get_faces()
@@ -25,13 +27,19 @@ static func cache(mesh_instance: MeshInstance3D) -> void:
 		var tri_uv := _find_uvs_for_triangle(mesh, a, b, c)
 		face_uvs.append(tri_uv)
 	_face_uv_cache[_mesh_key(mesh_instance)] = face_uvs
+	_face_uv_meta[_mesh_key(mesh_instance)] = {
+		"owner": mesh_instance,
+		"mesh_id": _mesh_resource_id(mesh_instance),
+	}
 	_strip_persisted_uv_meta(mesh_instance)
 
 
 static func clear(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null:
 		return
-	_face_uv_cache.erase(_mesh_key(mesh_instance))
+	var key := _mesh_key(mesh_instance)
+	_face_uv_cache.erase(key)
+	_face_uv_meta.erase(key)
 	_strip_persisted_uv_meta(mesh_instance)
 
 
@@ -195,6 +203,10 @@ static func _triangle_mesh_for(mesh_instance: MeshInstance3D) -> TriangleMesh:
 	return GodotASketchBrushable.triangle_mesh_for(mesh_instance)
 
 
+static func _mesh_resource_id(mesh_instance: MeshInstance3D) -> RID:
+	return mesh_instance.mesh.get_rid() if mesh_instance.mesh else RID()
+
+
 static func _mesh_key(mesh_instance: MeshInstance3D) -> int:
 	return mesh_instance.get_instance_id()
 
@@ -202,7 +214,17 @@ static func _mesh_key(mesh_instance: MeshInstance3D) -> int:
 static func _face_uvs_for(mesh_instance: MeshInstance3D) -> Array:
 	if mesh_instance == null:
 		return []
-	return _face_uv_cache.get(_mesh_key(mesh_instance), [])
+	var key := _mesh_key(mesh_instance)
+	if _face_uv_cache.has(key):
+		var meta: Dictionary = _face_uv_meta.get(key, {})
+		if (
+			meta.get("owner") == mesh_instance
+			and meta.get("mesh_id") == _mesh_resource_id(mesh_instance)
+		):
+			return _face_uv_cache[key]
+		_face_uv_cache.erase(key)
+		_face_uv_meta.erase(key)
+	return []
 
 
 static func _strip_persisted_uv_meta(mesh_instance: MeshInstance3D) -> void:

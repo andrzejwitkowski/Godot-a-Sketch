@@ -152,6 +152,8 @@ func _handle_paint_press(camera: Camera3D, screen_pos: Vector2, root: Node) -> v
 	_paint_last_uv = hit.uv
 	if not _dock_panel.begin_splat_stroke(mesh, "Painting splat mask (3D view)"):
 		return
+	_canvas_stroke_mesh = mesh
+		return
 	_dock_panel.stamp_splat_uv(Vector2(-1.0, -1.0), hit.uv)
 	_dock_panel.flush_splat_canvas(mesh, false, false)
 	_throttled_3d_viewport_feedback(mesh)
@@ -167,12 +169,12 @@ func _handle_paint_drag(camera: Camera3D, screen_pos: Vector2, root: Node) -> vo
 	if hit.is_empty() or not hit.has("uv"):
 		return
 	var mesh := _mesh_from_hit(hit)
-	if mesh == null:
+	if mesh == null or mesh != _canvas_stroke_mesh:
 		return
 	_dock_panel.stamp_splat_uv(_paint_last_uv, hit.uv)
 	_paint_last_uv = hit.uv
-	_dock_panel.flush_splat_canvas(mesh, false, false)
-	_throttled_3d_viewport_feedback(mesh)
+	_dock_panel.flush_splat_canvas(_canvas_stroke_mesh, false, false)
+	_throttled_3d_viewport_feedback(_canvas_stroke_mesh)
 
 
 func _request_splat_uniform_refresh(mesh: MeshInstance3D) -> void:
@@ -502,13 +504,7 @@ func _sync_plugin_process() -> void:
 	if _dock_panel == null or not _dock_panel.is_tool_active():
 		set_process(false)
 		return
-	var run := (
-		_dock_panel.is_ghost_enabled()
-		or _dock_panel.is_modifier_held()
-		or _dock_panel.is_splat_stroking()
-		or _viewport_paint_pressed
-	)
-	set_process(run)
+	set_process(true)
 
 
 func _cancel_viewport_paint() -> void:

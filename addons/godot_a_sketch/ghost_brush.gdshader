@@ -11,7 +11,7 @@ void fragment() {
 	float fill = 1.0 - smoothstep(mix(0.0, 0.98, hardness), 1.0, dist);
 	float ring = smoothstep(0.94, 0.90, dist) * (1.0 - smoothstep(0.90, 0.86, dist));
 	vec3 rgb = mix(brush_color.rgb, vec3(1.0), ring * 0.75);
-	float alpha = max(fill * opacity * brush_color.a, ring * 0.95);
+	float alpha = max(fill * opacity * brush_color.a, ring * opacity * 0.95);
 	ALBEDO = rgb;
 	ALPHA = alpha;
 }

@@ -395,10 +395,20 @@ static func triangle_mesh_for(mesh_instance: MeshInstance3D) -> TriangleMesh:
 		return null
 	var id := mesh_instance.get_instance_id()
 	if _triangle_meshes.has(id):
-		return _triangle_meshes[id]
+		var entry: Dictionary = _triangle_meshes[id]
+		if (
+			entry.get("owner") == mesh_instance
+			and entry.get("mesh_id") == _triangle_mesh_source_id(mesh_instance)
+		):
+			return entry.tri as TriangleMesh
+		_triangle_meshes.erase(id)
 	if mesh_instance.has_meta(Constants.TRIANGLE_MESH_META):
 		mesh_instance.remove_meta(Constants.TRIANGLE_MESH_META)
 	return _cache_triangle_mesh(mesh_instance)
+
+
+static func _triangle_mesh_source_id(mesh_instance: MeshInstance3D) -> RID:
+	return mesh_instance.mesh.get_rid() if mesh_instance.mesh else RID()
 
 
 static func _cache_triangle_mesh(mesh_instance: MeshInstance3D) -> TriangleMesh:
@@ -406,11 +416,21 @@ static func _cache_triangle_mesh(mesh_instance: MeshInstance3D) -> TriangleMesh:
 		return null
 	var id := mesh_instance.get_instance_id()
 	if _triangle_meshes.has(id):
-		return _triangle_meshes[id]
+		var entry: Dictionary = _triangle_meshes[id]
+		if (
+			entry.get("owner") == mesh_instance
+			and entry.get("mesh_id") == _triangle_mesh_source_id(mesh_instance)
+		):
+			return entry.tri as TriangleMesh
+		_triangle_meshes.erase(id)
 	var triangle_mesh: TriangleMesh = mesh_instance.mesh.generate_triangle_mesh()
 	if triangle_mesh == null:
 		return null
-	_triangle_meshes[id] = triangle_mesh
+	_triangle_meshes[id] = {
+		"tri": triangle_mesh,
+		"owner": mesh_instance,
+		"mesh_id": _triangle_mesh_source_id(mesh_instance),
+	}
 	if mesh_instance.has_meta(Constants.TRIANGLE_MESH_META):
 		mesh_instance.remove_meta(Constants.TRIANGLE_MESH_META)
 	return triangle_mesh

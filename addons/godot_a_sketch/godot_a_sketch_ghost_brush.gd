@@ -48,6 +48,7 @@ func update_from_hit(
 	_brush_size = size
 	_cached_hit = hit
 	if not _apply_transform():
+		hide_brush()
 		return
 	_apply_appearance(opacity_pct, hardness_pct, mode)
 	visible = true

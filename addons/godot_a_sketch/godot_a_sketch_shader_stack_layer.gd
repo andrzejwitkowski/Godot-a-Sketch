@@ -14,6 +14,7 @@ enum CompositeMode { MIX, ADD, SUBTRACT, MULTIPLY }
 @export var splat_map: GodotASketchSplatMap
 @export var splat_map_path: String = ""
 @export_range(0, 3) var mask_channel: int = 0
+@export_storage var blend_mode: int = -1
 @export var order: int = 0
 
 
@@ -49,6 +50,6 @@ func migrate_shader_to_material() -> void:
 
 
 func migrate_legacy_fields() -> void:
-	var legacy_blend = get("blend_mode")
-	if legacy_blend != null:
-		paint_blend_mode = int(legacy_blend) as PaintBlendMode
+	if blend_mode >= 0:
+		paint_blend_mode = clampi(blend_mode, 0, PaintBlendMode.MULTIPLY) as PaintBlendMode
+		blend_mode = -1

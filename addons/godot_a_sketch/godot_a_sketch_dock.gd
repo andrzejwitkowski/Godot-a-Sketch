@@ -252,7 +252,7 @@ func _load_settings() -> void:
 	if _modifier_mask == GodotASketchConstants.MODIFIER_NONE:
 		_modifier_mask = KEY_MASK_ALT
 		_select_modifier_option(_modifier_mask)
-		_save_settings()
+		settings.set_setting(GodotASketchConstants.SETTINGS_MODIFIER_KEY, _modifier_mask)
 	_show_ghost = bool(_read_setting(
 		settings, GodotASketchConstants.SETTINGS_SHOW_GHOST, GodotASketchConstants.DEFAULT_SHOW_GHOST))
 	_show_ghost_check.button_pressed = _show_ghost
@@ -337,10 +337,8 @@ func _splat_canvas_can_edit(mesh: Node3D) -> bool:
 	return resolve_paint_layer(mesh)[0] != null
 
 
-func _preview_channel(layer) -> int:
-	if layer == null:
-		return 0
-	return clampi(layer.mask_channel, 0, 3)
+func _preview_channel(_layer) -> int:
+	return 0
 
 
 func is_splat_stroking() -> bool:
@@ -447,7 +445,7 @@ func _stamp_splat_line(
 	var hardness := get_brush_hardness_percent() / 100.0
 	var blend := int(layer.paint_blend_mode)
 	var erase := _brush_mode == GodotASketchConstants.BrushMode.ERASE
-	var channel := clampi(layer.mask_channel, 0, 3)
+	var channel := 0
 	if from_uv.x < 0.0:
 		SplatEngine.stamp(map, to_uv, radius, strength, hardness, channel, blend, erase)
 		map.runtime_texture()
