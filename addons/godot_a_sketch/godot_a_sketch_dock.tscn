@@ -54,13 +54,19 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "0 shaders"
 
+[node name="ShowCatalogCheck" type="CheckBox" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+text = "Show shader catalog"
+
 [node name="ShaderCatalogLabel" type="Label" parent="Margin/VBox/StackSection"]
 layout_mode = 2
 text = "Available shaders (double-click to add layer)"
+visible = false
 
 [node name="ShaderCatalogList" type="ItemList" parent="Margin/VBox/StackSection"]
 custom_minimum_size = Vector2(0, 96)
 layout_mode = 2
+visible = false
 
 [node name="AddLayerContractButton" type="Button" parent="Margin/VBox/StackSection"]
 layout_mode = 2
@@ -75,6 +81,20 @@ text = "Stack layers"
 custom_minimum_size = Vector2(0, 120)
 layout_mode = 2
 size_flags_vertical = 3
+
+[node name="CompositeRow" type="HBoxContainer" parent="Margin/VBox/StackSection"]
+layout_mode = 2
+theme_override_constants/separation = 4
+visible = false
+
+[node name="CompositeCaption" type="Label" parent="Margin/VBox/StackSection/CompositeRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+text = "Composite"
+
+[node name="CompositeOption" type="OptionButton" parent="Margin/VBox/StackSection/CompositeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="LayerMaterialRow" type="HBoxContainer" parent="Margin/VBox/StackSection"]
 layout_mode = 2
@@ -94,9 +114,23 @@ layout_mode = 2
 text = "Paint or erase directly (uses brush + mode below)"
 autowrap_mode = 3
 
-[node name="SplatCanvas" type="Control" parent="Margin/VBox/StackSection"]
-custom_minimum_size = Vector2(0, 256)
+[node name="SplatSizeRow" type="HBoxContainer" parent="Margin/VBox/StackSection"]
 layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SplatSizeCaption" type="Label" parent="Margin/VBox/StackSection/SplatSizeRow"]
+layout_mode = 2
+text = "Mask size"
+
+[node name="SplatSizeOption" type="OptionButton" parent="Margin/VBox/StackSection/SplatSizeRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SplatCanvas" type="Control" parent="Margin/VBox/StackSection"]
+custom_minimum_size = Vector2(256, 256)
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_default_cursor_shape = 3
 script = ExtResource("2_canvas")
 
 [node name="Display" type="TextureRect" parent="Margin/VBox/StackSection/SplatCanvas"]

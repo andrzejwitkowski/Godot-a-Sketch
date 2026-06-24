@@ -5,7 +5,6 @@ const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants
 
 const REQUIRED_UNIFORMS := [
 	"splat_mask",
-	"mask_channel",
 	"layer_weight",
 	"layer_albedo",
 ]

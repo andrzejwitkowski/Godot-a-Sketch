@@ -4,13 +4,16 @@ class_name GodotASketchMeshUV
 const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants.gd")
 const EPS := 0.0005
 
+static var _face_uv_cache: Dictionary = {}
+
 
 static func cache(mesh_instance: MeshInstance3D) -> void:
 	if mesh_instance == null or mesh_instance.mesh == null:
 		return
 	var triangle_mesh: TriangleMesh = _triangle_mesh_for(mesh_instance)
 	if triangle_mesh == null:
-		mesh_instance.set_meta(Constants.MESH_UV_META, [])
+		_face_uv_cache.erase(_mesh_key(mesh_instance))
+		_strip_persisted_uv_meta(mesh_instance)
 		return
 	var faces: PackedVector3Array = triangle_mesh.get_faces()
 	var mesh: Mesh = mesh_instance.mesh
@@ -21,12 +24,15 @@ static func cache(mesh_instance: MeshInstance3D) -> void:
 		var c: Vector3 = faces[fi * 3 + 2]
 		var tri_uv := _find_uvs_for_triangle(mesh, a, b, c)
 		face_uvs.append(tri_uv)
-	mesh_instance.set_meta(Constants.MESH_UV_META, face_uvs)
+	_face_uv_cache[_mesh_key(mesh_instance)] = face_uvs
+	_strip_persisted_uv_meta(mesh_instance)
 
 
 static func clear(mesh_instance: MeshInstance3D) -> void:
-	if mesh_instance and mesh_instance.has_meta(Constants.MESH_UV_META):
-		mesh_instance.remove_meta(Constants.MESH_UV_META)
+	if mesh_instance == null:
+		return
+	_face_uv_cache.erase(_mesh_key(mesh_instance))
+	_strip_persisted_uv_meta(mesh_instance)
 
 
 static func hit_uv(
@@ -42,12 +48,12 @@ static func hit_uv(
 		if triangle_mesh == null:
 			return _planar_uv(mesh_instance, local_position, local_normal)
 		var expected_faces: int = triangle_mesh.get_faces().size() / 3
-		if not mesh_instance.has_meta(Constants.MESH_UV_META):
+		if not _face_uv_cache.has(_mesh_key(mesh_instance)):
 			cache(mesh_instance)
-		var face_uvs: Array = mesh_instance.get_meta(Constants.MESH_UV_META)
+		var face_uvs: Array = _face_uvs_for(mesh_instance)
 		if face_uvs.size() != expected_faces:
 			cache(mesh_instance)
-			face_uvs = mesh_instance.get_meta(Constants.MESH_UV_META)
+			face_uvs = _face_uvs_for(mesh_instance)
 		if face_index < face_uvs.size():
 			var tri_uvs: PackedVector2Array = face_uvs[face_index]
 			if tri_uvs.size() == 3:
@@ -107,9 +113,9 @@ static func resolve_uv_ray(
 
 
 static func has_mesh_uvs(mesh_instance: MeshInstance3D) -> bool:
-	if mesh_instance == null or not mesh_instance.has_meta(Constants.MESH_UV_META):
+	if mesh_instance == null:
 		return false
-	for tri_uvs in mesh_instance.get_meta(Constants.MESH_UV_META) as Array:
+	for tri_uvs in _face_uvs_for(mesh_instance):
 		if (tri_uvs as PackedVector2Array).size() == 3:
 			return true
 	return false
@@ -186,11 +192,19 @@ static func _safe_ratio(v: float, size: float) -> float:
 
 
 static func _triangle_mesh_for(mesh_instance: MeshInstance3D) -> TriangleMesh:
-	if mesh_instance.has_meta(Constants.TRIANGLE_MESH_META):
-		return mesh_instance.get_meta(Constants.TRIANGLE_MESH_META)
-	if mesh_instance.mesh == null:
-		return null
-	var triangle_mesh: TriangleMesh = mesh_instance.mesh.generate_triangle_mesh()
-	if triangle_mesh:
-		mesh_instance.set_meta(Constants.TRIANGLE_MESH_META, triangle_mesh)
-	return triangle_mesh
+	return GodotASketchBrushable.triangle_mesh_for(mesh_instance)
+
+
+static func _mesh_key(mesh_instance: MeshInstance3D) -> int:
+	return mesh_instance.get_instance_id()
+
+
+static func _face_uvs_for(mesh_instance: MeshInstance3D) -> Array:
+	if mesh_instance == null:
+		return []
+	return _face_uv_cache.get(_mesh_key(mesh_instance), [])
+
+
+static func _strip_persisted_uv_meta(mesh_instance: MeshInstance3D) -> void:
+	if mesh_instance != null and mesh_instance.has_meta(Constants.MESH_UV_META):
+		mesh_instance.remove_meta(Constants.MESH_UV_META)

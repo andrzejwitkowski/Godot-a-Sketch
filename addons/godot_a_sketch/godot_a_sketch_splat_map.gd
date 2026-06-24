@@ -2,7 +2,7 @@
 extends Resource
 class_name GodotASketchSplatMap
 
-@export var size: Vector2i = Vector2i(1024, 1024)
+@export var size: Vector2i = Vector2i(256, 256)
 @export var image: Image
 
 var _runtime_tex: ImageTexture
@@ -13,11 +13,34 @@ var _preview_dirty := Rect2i()
 var _preview_channel := -999
 
 
-static func create_default(resolution: int = 1024) -> GodotASketchSplatMap:
+static func create_default(resolution: int = 256) -> GodotASketchSplatMap:
 	var map := GodotASketchSplatMap.new()
 	map.size = Vector2i(resolution, resolution)
 	map.image = Image.create(resolution, resolution, false, Image.FORMAT_RGBA8)
 	map.image.fill(Color.BLACK)
+	return map
+
+
+static func from_channel(source: GodotASketchSplatMap, channel: int) -> GodotASketchSplatMap:
+	var map := create_default(source.size.x)
+	if source == null or source.image == null:
+		return map
+	source.ensure_rgba8()
+	var ch := clampi(channel, 0, 3)
+	var w := source.image.get_width()
+	var h := source.image.get_height()
+	var src: PackedByteArray = source.image.get_data()
+	var dst: PackedByteArray = map.image.get_data()
+	for y in h:
+		for x in w:
+			var i := (y * w + x) * 4
+			var v := src[i + ch]
+			dst[i] = v
+			dst[i + 1] = 0
+			dst[i + 2] = 0
+			dst[i + 3] = 255
+	map.image.set_data(w, h, false, Image.FORMAT_RGBA8, dst)
+	map.invalidate_caches()
 	return map
 
 
@@ -73,10 +96,17 @@ func prewarm(channel: int = -1) -> void:
 	if image == null or image.get_width() < 1:
 		return
 	ensure_rgba8()
-	_ensure_preview_src()
+	sync_preview_from_image(channel)
+	runtime_texture()
+
+
+func sync_preview_from_image(channel: int = -1) -> void:
+	if image == null or image.get_width() < 1:
+		return
+	ensure_rgba8()
+	_preview_src = null
 	_preview_dirty = Rect2i(0, 0, PREVIEW_SIZE, PREVIEW_SIZE)
 	preview_texture(channel)
-	runtime_texture()
 
 
 func patch_preview_from_stamp(x0: int, y0: int, x1: int, y1: int) -> void:
@@ -173,5 +203,43 @@ func ensure_rgba8() -> void:
 		invalidate_caches()
 
 
+func resize_to(resolution: int) -> void:
+	resolution = maxi(resolution, 1)
+	if image == null:
+		image = Image.create(resolution, resolution, false, Image.FORMAT_RGBA8)
+		image.fill(Color.BLACK)
+	elif image.get_width() != resolution or image.get_height() != resolution:
+		ensure_rgba8()
+		image.resize(resolution, resolution, Image.INTERPOLATE_BILINEAR)
+	size = Vector2i(resolution, resolution)
+	invalidate_caches()
+
+
 func duplicate_map() -> GodotASketchSplatMap:
 	return duplicate(true) as GodotASketchSplatMap
+
+
+static func self_check_from_channel() -> bool:
+	var src := create_default(2)
+	var data := src.image.get_data()
+	data[0] = 10
+	data[1] = 20
+	data[2] = 30
+	data[3] = 40
+	data[4] = 50
+	data[5] = 60
+	data[6] = 70
+	data[7] = 80
+	src.image.set_data(2, 2, false, Image.FORMAT_RGBA8, data)
+	var g := from_channel(src, 1)
+	var out := g.image.get_data()
+	return out[0] == 20 and out[1] == 0 and out[4] == 60 and out[5] == 0
+
+
+static func self_check_resize() -> bool:
+	var map := create_default(4)
+	var data := map.image.get_data()
+	data[0] = 255
+	map.image.set_data(4, 4, false, Image.FORMAT_RGBA8, data)
+	map.resize_to(2)
+	return map.size == Vector2i(2, 2) and map.image.get_pixel(0, 0).r > 0.9

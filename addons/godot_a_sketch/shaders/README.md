@@ -4,8 +4,7 @@ Paint stack layers must implement the contract in `layer_common.gdshaderinc`.
 
 ## Required uniforms
 
-- `splat_mask` — RGBA splat weights; driven per mesh by the addon at apply time (#8).
-- `mask_channel` — 0–3 (R/G/B/A slot for this layer); set from stack layer, not edited on `layer_material`.
+- `splat_mask` — grayscale splat weight in the **R** channel; one map per stack layer, bound by the addon at apply time (#8).
 - `layer_weight` — stack blend weight; set from stack layer.
 - `layer_albedo` — layer albedo texture; edit on each layer’s `layer_material` in the inspector.
 
@@ -16,6 +15,11 @@ Each `ShaderStackLayer` owns a `layer_material` (`ShaderMaterial`) saved in the 
 **Paint-ready shaders must sample the mask in `fragment()`** — call `godot_a_sketch_mask_weight(UV)` from `layer_common.gdshaderinc` and `discard` or modulate alpha where weight is 0. Declaring the uniforms alone is not enough.
 
 `layer_template.gdshader` is for surface mask painting on brushable `MeshInstance3D` meshes.
+
+## Viewport stack compositing
+
+- **Layer 0** renders with its layer shader and `layer_0.tres` splat map.
+- **Layers 1+** use bundled `stack_pass_{mix,add,mul,sub}.gdshader` shells (selected by **Composite** on the layer) with that layer’s splat map and `layer_albedo` from `layer_material`.
 
 ## Surface vs MultiMesh shaders
 
@@ -36,6 +40,6 @@ The dock blocks mismatched pairings (instance shader on surface mesh, `layer_tem
 1. Copy `layer_template.gdshader` or `#include` the inc file in your spatial shader.
 2. Or select a project shader and click **Insert layer contract include** (adds the `#include` with editor Undo).
 3. Drop the file under this folder or anywhere in `res://`.
-4. Click **Refresh** in the dock **Shader Stack** section.
+4. Enable **Show shader catalog** in the dock, then click **Refresh**.
 
 Bundled layers live in `layers/` (create the folder as needed).
