@@ -153,7 +153,6 @@ func _handle_paint_press(camera: Camera3D, screen_pos: Vector2, root: Node) -> v
 	if not _dock_panel.begin_splat_stroke(mesh, "Painting splat mask (3D view)"):
 		return
 	_canvas_stroke_mesh = mesh
-		return
 	_dock_panel.stamp_splat_uv(Vector2(-1.0, -1.0), hit.uv)
 	_dock_panel.flush_splat_canvas(mesh, false, false)
 	_throttled_3d_viewport_feedback(mesh)
