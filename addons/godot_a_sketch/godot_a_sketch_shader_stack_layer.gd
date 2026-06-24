@@ -2,14 +2,19 @@
 extends Resource
 class_name GodotASketchShaderStackLayer
 
-enum BlendMode { MIX, ADD, MULTIPLY }
+enum PaintBlendMode { MIX, ADD, MULTIPLY }
+enum CompositeMode { MIX, ADD, SUBTRACT, MULTIPLY }
 
 @export var display_name: String = "Layer"
 @export var layer_material: ShaderMaterial
 @export var shader: Shader
 @export_range(0.0, 1.0) var weight: float = 1.0
-@export var blend_mode: BlendMode = BlendMode.MIX
+@export var paint_blend_mode: PaintBlendMode = PaintBlendMode.MIX
+@export var composite_mode: CompositeMode = CompositeMode.MIX
+@export var splat_map: GodotASketchSplatMap
+@export var splat_map_path: String = ""
 @export_range(0, 3) var mask_channel: int = 0
+@export_storage var blend_mode: int = -1
 @export var order: int = 0
 
 
@@ -42,3 +47,9 @@ func migrate_shader_to_material() -> void:
 		return
 	layer_material = ShaderMaterial.new()
 	layer_material.shader = shader
+
+
+func migrate_legacy_fields() -> void:
+	if blend_mode >= 0:
+		paint_blend_mode = clampi(blend_mode, 0, PaintBlendMode.MULTIPLY) as PaintBlendMode
+		blend_mode = -1

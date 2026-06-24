@@ -11,26 +11,31 @@ const SETTINGS_PREFIX := "godot_a_sketch/"
 const DEFAULT_SIZE := 32.0
 const DEFAULT_OPACITY := 100.0
 const DEFAULT_HARDNESS := 50.0
-const MAX_STACK_LAYERS := 4
+const MAX_STACK_LAYERS := 8
+const _COMPOSITE_MODES := ["Mix", "Add", "Subtract", "Multiply"]
 
 const MENU_FROM_MESH := 0
 const MENU_BROWSE := 1
 const MENU_TEMPLATE := 2
 const MENU_TEMPLATE_LAYER := 3
-const _MASK_CHANNELS := ["R", "G", "B", "A"]
 const SplatMapAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_map_assign.gd")
 const ShaderStackAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack_assign.gd")
 const ShaderStack := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack.gd")
 const ShaderStackLayer := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack_layer.gd")
+const SplatEngine := preload("res://addons/godot_a_sketch/godot_a_sketch_splat_engine.gd")
 
 @onready var _stack_hint: Label = $Margin/VBox/StackSection/StackHintLabel
 @onready var _refresh_button: Button = $Margin/VBox/StackSection/StackCatalogRow/RefreshButton
 @onready var _catalog_count_label: Label = $Margin/VBox/StackSection/StackCatalogRow/CatalogCountLabel
+@onready var _show_catalog_check: CheckBox = $Margin/VBox/StackSection/ShowCatalogCheck
 @onready var _shader_catalog_list: ItemList = $Margin/VBox/StackSection/ShaderCatalogList
 @onready var _add_layer_contract_button: Button = $Margin/VBox/StackSection/AddLayerContractButton
 @onready var _stack_list: ItemList = $Margin/VBox/StackSection/StackList
+@onready var _composite_option: OptionButton = $Margin/VBox/StackSection/CompositeRow/CompositeOption
+@onready var _composite_row: HBoxContainer = $Margin/VBox/StackSection/CompositeRow
 @onready var _edit_layer_material_button: Button = $Margin/VBox/StackSection/LayerMaterialRow/EditLayerMaterialButton
 @onready var _splat_preview_label: Label = $Margin/VBox/StackSection/SplatPreviewLabel
+@onready var _splat_size_option: OptionButton = $Margin/VBox/StackSection/SplatSizeRow/SplatSizeOption
 @onready var _splat_canvas: GodotASketchSplatCanvas = $Margin/VBox/StackSection/SplatCanvas
 @onready var _add_menu: MenuButton = $Margin/VBox/StackSection/StackButtons/AddMenuButton
 @onready var _remove_button: Button = $Margin/VBox/StackSection/StackButtons/RemoveButton
@@ -71,18 +76,65 @@ var _template_dialog: EditorFileDialog
 var _pending_material_mesh: Node3D
 var _canvas_refresh_pending := false
 var _pending_canvas_mesh: Node3D
+var _splat_disk_load_mesh: Node3D
+var _splat_load_token := 0
+var _splat_size_loading := false
+var _disk_save_timer: Timer
+var _stroke_mesh: MeshInstance3D
+var _stroke_layer: GodotASketchShaderStackLayer
+var _stroke_layer_index := -1
+var _viewport_feedback_at := 0
+const VIEWPORT_FEEDBACK_MS := 120
+const DISK_SAVE_DEBOUNCE_SEC := 0.75
 
 
 func _ready() -> void:
 	_setup_brush_ranges()
 	_setup_modifier_option()
 	_setup_mode_option()
+	_setup_composite_option()
+	_setup_splat_size_option()
 	_setup_add_menu()
 	_setup_file_dialogs()
 	_connect_signals()
+	_disk_save_timer = Timer.new()
+	_disk_save_timer.one_shot = true
+	_disk_save_timer.wait_time = DISK_SAVE_DEBOUNCE_SEC
+	_disk_save_timer.timeout.connect(func(): SplatMapAssign.flush_disk_persists())
+	add_child(_disk_save_timer)
+	var selection := EditorInterface.get_selection()
+	selection.selection_changed.connect(_on_editor_selection_changed)
 	_load_settings()
+	_apply_catalog_visibility()
 	refresh_shader_catalog(true)
 	refresh_shader_stack_ui()
+
+
+func _setup_splat_size_option() -> void:
+	if _splat_size_option == null:
+		return
+	_splat_size_option.clear()
+	for size in GodotASketchConstants.SPLAT_SIZE_OPTIONS:
+		_splat_size_option.add_item("%d × %d" % [size, size])
+		_splat_size_option.set_item_metadata(_splat_size_option.item_count - 1, size)
+
+
+func _setup_composite_option() -> void:
+	_composite_option.clear()
+	for i in _COMPOSITE_MODES.size():
+		_composite_option.add_item(_COMPOSITE_MODES[i])
+		_composite_option.set_item_metadata(i, i)
+
+
+func _apply_catalog_visibility() -> void:
+	var show := _show_catalog_check != null and _show_catalog_check.button_pressed
+	if _shader_catalog_list:
+		_shader_catalog_list.visible = show
+	var catalog_label := $Margin/VBox/StackSection/ShaderCatalogLabel
+	if catalog_label:
+		catalog_label.visible = show
+	if _add_layer_contract_button and not show:
+		_add_layer_contract_button.visible = false
 
 
 func refresh_shader_catalog(probe_shaders: bool = false) -> void:
@@ -128,14 +180,12 @@ func _setup_mode_option() -> void:
 
 func _setup_modifier_option() -> void:
 	_modifier_option.clear()
-	_modifier_option.add_item("None")
-	_modifier_option.set_item_metadata(0, GodotASketchConstants.MODIFIER_NONE)
-	_modifier_option.add_item("Shift")
-	_modifier_option.set_item_metadata(1, KEY_MASK_SHIFT)
-	_modifier_option.add_item("Alt")
-	_modifier_option.set_item_metadata(2, KEY_MASK_ALT)
+	_modifier_option.add_item("Alt (recommended)")
+	_modifier_option.set_item_metadata(0, KEY_MASK_ALT)
 	_modifier_option.add_item("Ctrl")
-	_modifier_option.set_item_metadata(3, KEY_MASK_CTRL)
+	_modifier_option.set_item_metadata(1, KEY_MASK_CTRL)
+	_modifier_option.add_item("Shift")
+	_modifier_option.set_item_metadata(2, KEY_MASK_SHIFT)
 
 
 func _setup_brush_ranges() -> void:
@@ -155,10 +205,13 @@ func _setup_brush_ranges() -> void:
 
 func _connect_signals() -> void:
 	_refresh_button.pressed.connect(_on_refresh_catalog_pressed)
+	_show_catalog_check.toggled.connect(_on_show_catalog_toggled)
 	_shader_catalog_list.item_selected.connect(_on_shader_catalog_selected)
 	_shader_catalog_list.item_activated.connect(_on_shader_catalog_activated)
 	_add_layer_contract_button.pressed.connect(_on_add_layer_contract_pressed)
 	_stack_list.item_selected.connect(_on_stack_layer_selected)
+	_splat_size_option.item_selected.connect(_on_splat_size_selected)
+	_composite_option.item_selected.connect(_on_composite_selected)
 	_edit_layer_material_button.pressed.connect(_on_edit_layer_material_pressed)
 	_remove_button.pressed.connect(_on_remove_layer_pressed)
 	_up_button.pressed.connect(_on_move_layer_up)
@@ -176,9 +229,9 @@ func _connect_signals() -> void:
 	_opacity_slider.value_changed.connect(_on_opacity_changed)
 	_hardness_slider.value_changed.connect(_on_hardness_changed)
 	if _splat_canvas:
-		_splat_canvas.stroke_begin.connect(func(): splat_stroke_begin.emit())
-		_splat_canvas.stroke_uv.connect(func(from_uv, to_uv): splat_stroke_uv.emit(from_uv, to_uv))
-		_splat_canvas.stroke_end.connect(func(): splat_stroke_end.emit())
+		_splat_canvas.stroke_begin.connect(_on_preview_stroke_begin)
+		_splat_canvas.stroke_uv.connect(_on_preview_stroke_uv)
+		_splat_canvas.stroke_end.connect(_on_preview_stroke_end)
 
 
 func _load_settings() -> void:
@@ -196,6 +249,10 @@ func _load_settings() -> void:
 	_modifier_mask = int(_read_setting(
 		settings, GodotASketchConstants.SETTINGS_MODIFIER_KEY, GodotASketchConstants.DEFAULT_MODIFIER_MASK))
 	_select_modifier_option(_modifier_mask)
+	if _modifier_mask == GodotASketchConstants.MODIFIER_NONE:
+		_modifier_mask = KEY_MASK_ALT
+		_select_modifier_option(_modifier_mask)
+		settings.set_setting(GodotASketchConstants.SETTINGS_MODIFIER_KEY, _modifier_mask)
 	_show_ghost = bool(_read_setting(
 		settings, GodotASketchConstants.SETTINGS_SHOW_GHOST, GodotASketchConstants.DEFAULT_SHOW_GHOST))
 	_show_ghost_check.button_pressed = _show_ghost
@@ -236,10 +293,183 @@ func set_context_mesh(mesh: Node3D) -> void:
 	if mesh == _context_mesh:
 		return
 	_context_mesh = mesh
-	if is_node_ready():
-		refresh_shader_stack_ui()
-		if mesh:
-			refresh_splat_canvas(mesh)
+	if not is_node_ready():
+		return
+	# ponytail: tree selection owns the dock — hover must not reload stacks/splats from disk
+	if _get_selected_paint_node() != null:
+		return
+	schedule_shader_stack_ui_refresh()
+
+
+func schedule_shader_stack_ui_refresh() -> void:
+	call_deferred("_flush_shader_stack_ui_refresh")
+
+
+func on_editor_selection_changed() -> void:
+	_cancel_stale_splat_preview()
+	refresh_shader_stack_ui()
+
+
+func _on_editor_selection_changed() -> void:
+	on_editor_selection_changed()
+
+
+func _flush_shader_stack_ui_refresh() -> void:
+	refresh_shader_stack_ui()
+
+
+func cancel_stale_splat_preview() -> void:
+	_cancel_stale_splat_preview()
+
+
+func _cancel_stale_splat_preview() -> void:
+	_splat_load_token += 1
+	_splat_disk_load_mesh = null
+	_canvas_refresh_pending = false
+	_pending_canvas_mesh = null
+
+
+func _splat_canvas_can_edit(mesh: Node3D) -> bool:
+	if mesh == null or not mesh is MeshInstance3D:
+		return false
+	if not GodotASketchBrushable.is_paint_surface(mesh):
+		return false
+	return resolve_paint_layer(mesh)[0] != null
+
+
+func _preview_channel(_layer) -> int:
+	return 0
+
+
+func is_splat_stroking() -> bool:
+	return _stroke_mesh != null
+
+
+func begin_splat_stroke(mesh: MeshInstance3D, status_msg: String = "") -> bool:
+	if mesh == null:
+		return false
+	if is_splat_stroking():
+		return true
+	var layer_info := resolve_paint_layer(mesh)
+	var layer: GodotASketchShaderStackLayer = layer_info[0]
+	var layer_index: int = layer_info[1]
+	if layer == null:
+		set_status("Add a stack layer to paint the splat mask")
+		return false
+	var map: GodotASketchSplatMap = SplatMapAssign.begin_edit(mesh, layer, layer_index)
+	if map == null:
+		set_status("Could not open splat map — check Output panel")
+		return false
+	_stroke_mesh = mesh
+	_stroke_layer = layer
+	_stroke_layer_index = layer_index
+	if not status_msg.is_empty():
+		set_status(status_msg)
+	return true
+
+
+func stamp_splat_uv(from_uv: Vector2, to_uv: Vector2) -> void:
+	if not is_splat_stroking():
+		return
+	_stamp_splat_line(_stroke_mesh, _stroke_layer, _stroke_layer_index, from_uv, to_uv)
+
+
+func end_splat_stroke(apply_viewport: bool = true) -> MeshInstance3D:
+	if not is_splat_stroking():
+		return null
+	var mesh := _stroke_mesh
+	var layer := _stroke_layer
+	var layer_index := _stroke_layer_index
+	_stroke_mesh = null
+	_stroke_layer = null
+	_stroke_layer_index = -1
+	SplatMapAssign.commit_edit(mesh, layer, layer_index)
+	flush_splat_canvas(mesh, false, true)
+	schedule_disk_persist()
+	if apply_viewport:
+		GodotASketchBrushable.apply_paint_feedback(mesh, true)
+	return mesh
+
+
+func _on_preview_stroke_begin() -> void:
+	var mesh := _resolve_target_mesh() as MeshInstance3D
+	if mesh == null:
+		set_status("Select a brushable MeshInstance3D")
+		return
+	if not begin_splat_stroke(mesh, "Painting splat mask (preview)"):
+		return
+	splat_stroke_begin.emit()
+
+
+func _on_preview_stroke_uv(from_uv: Vector2, to_uv: Vector2) -> void:
+	if not is_splat_stroking():
+		return
+	var mesh := _stroke_mesh
+	stamp_splat_uv(from_uv, to_uv)
+	_push_splat_viewport_feedback(mesh)
+	flush_splat_canvas(mesh, false, false)
+	throttled_viewport_feedback(mesh, false)
+	splat_stroke_uv.emit(from_uv, to_uv)
+
+
+func _on_preview_stroke_end() -> void:
+	if is_splat_stroking():
+		end_splat_stroke(true)
+	splat_stroke_end.emit()
+
+
+func throttled_viewport_feedback(mesh: MeshInstance3D, rebuild_grass: bool = false) -> void:
+	if mesh == null:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _viewport_feedback_at < VIEWPORT_FEEDBACK_MS:
+		return
+	_viewport_feedback_at = now
+	GodotASketchBrushable.apply_paint_feedback(mesh, rebuild_grass)
+
+
+func _stamp_splat_line(
+	mesh: MeshInstance3D,
+	layer: GodotASketchShaderStackLayer,
+	layer_index: int,
+	from_uv: Vector2,
+	to_uv: Vector2
+) -> void:
+	if mesh == null or layer == null:
+		return
+	var map := SplatMapAssign.working_layer_map(mesh, layer_index)
+	if map == null:
+		return
+	var radius := maxf(get_brush_size() / float(map.size.x), 0.008)
+	var strength := get_brush_opacity_percent() / 100.0
+	var hardness := get_brush_hardness_percent() / 100.0
+	var blend := int(layer.paint_blend_mode)
+	var erase := _brush_mode == GodotASketchConstants.BrushMode.ERASE
+	var channel := 0
+	if from_uv.x < 0.0:
+		SplatEngine.stamp(map, to_uv, radius, strength, hardness, channel, blend, erase)
+		map.runtime_texture()
+		return
+	var delta := to_uv - from_uv
+	var dist := delta.length()
+	if dist < 0.0001:
+		SplatEngine.stamp(map, to_uv, radius, strength, hardness, channel, blend, erase)
+		map.runtime_texture()
+		return
+	var spacing := maxf(radius * 0.25, 0.001)
+	var steps := mini(maxi(1, int(ceil(dist / spacing))), 8)
+	for i in range(steps + 1):
+		var t := float(i) / float(steps)
+		SplatEngine.stamp(
+			map, from_uv.lerp(to_uv, t), radius, strength, hardness, channel, blend, erase
+		)
+	map.runtime_texture()
+
+
+func _push_splat_viewport_feedback(mesh: MeshInstance3D) -> void:
+	if mesh == null:
+		return
+	GodotASketchBrushable.refresh_splat_uniforms_on_mesh(mesh)
 
 
 func refresh_shader_stack_ui() -> void:
@@ -250,19 +480,16 @@ func refresh_shader_stack_ui() -> void:
 	_target_mesh = mesh
 	_update_mark_buttons(mesh)
 	_set_stack_controls_enabled(mesh != null)
+	if mesh is MeshInstance3D:
+		GodotASketchBrushable.ensure_paint_ready(mesh as MeshInstance3D)
 	if mesh == null:
 		_stack_hint.text = "Select a MeshInstance3D or MultiMeshInstance3D, or hover one in the 3D view"
 		refresh_splat_canvas(null)
 	elif not GodotASketchBrushable.is_brushable(mesh):
 		var kind := "MultiMesh" if GodotASketchBrushable.is_multimesh_target(mesh) else "mesh"
-		_stack_hint.text = "%s — click Mark Brushable to manage %s stack" % [mesh.name, kind]
-		refresh_splat_canvas(null)
-		var stack_early := ShaderStackAssign.load_stack(mesh)
-		if stack_early:
-			for layer in stack_early.layers:
-				_stack_list.add_item(_layer_list_text(layer))
-			if _stack_list.item_count > 0 and _stack_list.get_selected_items().is_empty():
-				_stack_list.select(0)
+		_stack_hint.text = "%s — Mark Brushable, then Add → Template layer" % mesh.name
+		_update_splat_size_ui(mesh, null, false)
+		_cancel_stale_splat_preview()
 	else:
 		var stack := ShaderStackAssign.load_stack(mesh)
 		_copy_stack_button.disabled = stack == null
@@ -272,7 +499,7 @@ func refresh_shader_stack_ui() -> void:
 				"%s — add a stack layer to paint (Add → template layer, or double-click a shader below)"
 				% mesh.name
 			)
-			refresh_splat_canvas(mesh)
+			_refresh_splat_canvas_now(mesh)
 		else:
 			_stack_hint.text = "%s  (%s)" % [mesh.name, ShaderStackAssign.stack_path(mesh)]
 			if GodotASketchBrushable.is_multimesh_target(mesh):
@@ -281,10 +508,11 @@ func refresh_shader_stack_ui() -> void:
 				_stack_list.add_item(_layer_list_text(layer))
 			if _stack_list.item_count > 0 and _stack_list.get_selected_items().is_empty():
 				_stack_list.select(0)
-			refresh_splat_canvas(mesh)
+			_refresh_splat_canvas_now(mesh)
 			var active := get_active_stack_layer(mesh)
 			if active:
 				update_paint_target_label(active)
+			_update_composite_row()
 			_queue_material_rebuild(mesh)
 	_update_catalog_for_target_mesh()
 
@@ -311,18 +539,51 @@ func _set_stack_controls_enabled(enabled: bool) -> void:
 
 
 func get_active_stack_layer(mesh: Node3D) -> GodotASketchShaderStackLayer:
-	if mesh == null:
+	var idx := get_active_stack_layer_index(mesh)
+	if idx < 0:
 		return null
 	var stack := ShaderStackAssign.load_stack(mesh)
-	if stack == null or stack.layers.is_empty():
+	if stack == null or idx >= stack.layers.size():
 		return null
+	return stack.layers[idx]
+
+
+func resolve_paint_layer(mesh: Node3D) -> Array:
+	var layer_index := get_active_stack_layer_index(mesh)
+	var layer := get_active_stack_layer(mesh)
+	if layer != null:
+		return [layer, layer_index]
+	var stack := ShaderStackAssign.load_stack(mesh)
+	if stack == null or stack.layers.is_empty():
+		return [null, -1]
+	layer_index = 0
+	if mesh == _target_mesh and _stack_list.item_count > 0:
+		var selected := _stack_list.get_selected_items()
+		if not selected.is_empty():
+			layer_index = clampi(selected[0], 0, stack.layers.size() - 1)
+	return [stack.layers[layer_index], layer_index]
+
+
+func get_active_stack_layer_index(mesh: Node3D) -> int:
+	if mesh == null:
+		return -1
+	var stack := ShaderStackAssign.load_stack(mesh)
+	if stack == null or stack.layers.is_empty():
+		return -1
 	if mesh == _target_mesh:
 		var selected := _stack_list.get_selected_items()
 		if not selected.is_empty():
 			var idx: int = selected[0]
 			if idx >= 0 and idx < stack.layers.size():
-				return stack.layers[idx]
-	return stack.layers[0]
+				return idx
+		if _stack_list.item_count > 0:
+			return 0
+	return 0
+
+
+func schedule_disk_persist() -> void:
+	if _disk_save_timer:
+		_disk_save_timer.start()
 
 
 func refresh_splat_canvas(mesh: Node3D = null) -> void:
@@ -335,20 +596,57 @@ func refresh_splat_canvas(mesh: Node3D = null) -> void:
 	call_deferred("_flush_splat_canvas_refresh")
 
 
-func flush_splat_canvas(mesh: Node3D = null) -> void:
+func flush_splat_canvas(mesh: Node3D = null, prewarm_gpu: bool = false, sync_preview: bool = false) -> void:
 	_canvas_refresh_pending = false
 	_pending_canvas_mesh = null
-	_refresh_splat_canvas_now(mesh)
+	_refresh_splat_canvas_now(mesh, prewarm_gpu, sync_preview)
 
 
 func _flush_splat_canvas_refresh() -> void:
 	_canvas_refresh_pending = false
 	var mesh := _pending_canvas_mesh
 	_pending_canvas_mesh = null
+	if mesh == null:
+		_refresh_splat_canvas_now(null)
+		return
+	if _try_refresh_splat_canvas_peek(mesh):
+		return
 	_refresh_splat_canvas_now(mesh)
 
 
-func _refresh_splat_canvas_now(mesh: Node3D = null) -> void:
+func _deferred_splat_disk_load(token: int) -> void:
+	if token != _splat_load_token:
+		return
+	var mesh := _splat_disk_load_mesh
+	_splat_disk_load_mesh = null
+	if mesh == null or mesh != _target_mesh:
+		return
+	_refresh_splat_canvas_now(mesh)
+
+
+func _try_refresh_splat_canvas_peek(mesh: Node3D) -> bool:
+	if not is_node_ready() or _splat_canvas == null or mesh == null:
+		return false
+	var layer := get_active_stack_layer(mesh)
+	var layer_index := get_active_stack_layer_index(mesh)
+	if layer == null:
+		var resolved := resolve_paint_layer(mesh)
+		layer = resolved[0]
+		layer_index = resolved[1]
+	var map = SplatMapAssign.peek_map(mesh, layer_index) if layer_index >= 0 else null
+	if map == null and layer and layer.splat_map != null and layer.splat_map.image != null:
+		map = layer.splat_map
+	if map == null:
+		return false
+	var can_edit := _splat_canvas_can_edit(mesh)
+	var preview_ch := _preview_channel(layer)
+	var preview_tex := map.preview_texture(preview_ch)
+	_splat_canvas.set_preview_texture(preview_tex)
+	_splat_canvas.set_editable(can_edit)
+	return true
+
+
+func _refresh_splat_canvas_now(mesh: Node3D = null, prewarm_gpu: bool = false, sync_preview: bool = false) -> void:
 	if not is_node_ready() or _splat_canvas == null:
 		return
 	if mesh == null:
@@ -356,27 +654,90 @@ func _refresh_splat_canvas_now(mesh: Node3D = null) -> void:
 	if mesh == null:
 		_splat_canvas.set_preview_texture(null)
 		_splat_canvas.set_editable(false)
+		_update_splat_size_ui(null, null, false)
 		return
-	var map = SplatMapAssign.working_map(mesh)
-	if map == null:
-		map = SplatMapAssign.load_map(mesh)
 	var layer := get_active_stack_layer(mesh)
-	var can_edit := (
-		GodotASketchBrushable.is_brushable(mesh)
-		and GodotASketchBrushable.supports_splat_paint(mesh)
-		and map != null
-		and layer != null
-	)
+	var layer_index := get_active_stack_layer_index(mesh)
+	if layer == null:
+		var resolved := resolve_paint_layer(mesh)
+		layer = resolved[0]
+		layer_index = resolved[1]
+	var can_edit := _splat_canvas_can_edit(mesh)
+	var map = SplatMapAssign.peek_map(mesh, layer_index) if layer_index >= 0 else null
+	if map == null:
+		map = SplatMapAssign.latest_map(mesh, layer_index)
+	if map == null and layer and layer.splat_map != null and layer.splat_map.image != null:
+		map = layer.splat_map
+		map.ensure_rgba8()
+	if map == null and layer:
+		map = SplatMapAssign.ensure_layer_map(mesh, layer, layer_index)
+	if map == null and layer:
+		map = SplatMapAssign.reload_layer_map(mesh, layer, layer_index)
 	if map == null:
 		_splat_canvas.set_preview_texture(null)
-		_splat_canvas.set_editable(false)
+		_splat_canvas.set_editable(can_edit)
+		_update_splat_size_ui(mesh, null, can_edit)
 		return
-	var channel := layer.mask_channel if layer else -1
-	var preview_tex := map.preview_texture(channel)
+	var preview_ch := _preview_channel(layer)
+	if sync_preview:
+		map.sync_preview_from_image(preview_ch)
+	elif prewarm_gpu:
+		map.prewarm(preview_ch)
+	else:
+		map.preview_texture(preview_ch)
+	var preview_tex := map.preview_texture(preview_ch)
+	if preview_tex == null:
+		map.sync_preview_from_image(preview_ch)
+		preview_tex = map.preview_texture(preview_ch)
 	_splat_canvas.set_preview_texture(preview_tex)
 	_splat_canvas.set_editable(can_edit)
-	if can_edit:
-		call_deferred("_prewarm_splat_gpu", map)
+	_update_splat_size_ui(mesh, map, can_edit)
+
+
+func _update_splat_size_ui(mesh: Node3D, map: GodotASketchSplatMap = null, can_edit: bool = false) -> void:
+	if _splat_size_option == null:
+		return
+	_splat_size_loading = true
+	_splat_size_option.disabled = not can_edit
+	if not can_edit or mesh == null:
+		_splat_size_loading = false
+		return
+	var resolution := map.size.x if map else SplatMapAssign.default_resolution()
+	_select_splat_size_option(resolution)
+	_splat_size_loading = false
+
+
+func _select_splat_size_option(resolution: int) -> void:
+	if _splat_size_option == null:
+		return
+	resolution = SplatMapAssign.clamp_splat_resolution(resolution)
+	for i in _splat_size_option.item_count:
+		if int(_splat_size_option.get_item_metadata(i)) == resolution:
+			_splat_size_option.select(i)
+			return
+
+
+func _on_splat_size_selected(_index: int) -> void:
+	if _splat_size_loading or _target_mesh == null or _splat_size_option == null:
+		return
+	var layer := get_active_stack_layer(_target_mesh)
+	var layer_index := get_active_stack_layer_index(_target_mesh)
+	if layer == null or layer_index < 0:
+		return
+	var resolution := int(_splat_size_option.get_selected_metadata())
+	var map := SplatMapAssign.peek_map(_target_mesh, layer_index)
+	if map and map.size.x == resolution:
+		return
+	map = SplatMapAssign.resize_layer_map(_target_mesh, layer, layer_index, resolution)
+	if map == null:
+		set_status("Could not resize splat mask")
+		return
+	var settings := EditorInterface.get_editor_settings()
+	settings.set_setting(GodotASketchConstants.SETTINGS_SPLAT_SIZE, resolution)
+	schedule_disk_persist()
+	flush_splat_canvas(_target_mesh, false, true)
+	GodotASketchBrushable.apply_paint_feedback(_target_mesh, true)
+	set_status("Splat mask resized to %d×%d" % [resolution, resolution])
 
 
 func _prewarm_splat_gpu(map: GodotASketchSplatMap) -> void:
@@ -387,17 +748,57 @@ func _prewarm_splat_gpu(map: GodotASketchSplatMap) -> void:
 func update_paint_target_label(layer: GodotASketchShaderStackLayer) -> void:
 	if layer == null:
 		return
-	var channel: String = _MASK_CHANNELS[clampi(layer.mask_channel, 0, 3)]
-	set_status("Paint target: %s (%s)" % [layer.display_name, channel])
+	set_status("Paint target: %s" % layer.display_name)
 
 
 func _on_stack_layer_selected(_index: int) -> void:
 	if _target_mesh == null:
 		return
+	_update_composite_row()
 	refresh_splat_canvas(_target_mesh)
 	var layer := get_active_stack_layer(_target_mesh)
 	if layer:
 		update_paint_target_label(layer)
+
+
+func _update_composite_row() -> void:
+	if not is_node_ready():
+		return
+	var idx := get_active_stack_layer_index(_target_mesh)
+	_composite_row.visible = idx > 0
+	if idx <= 0:
+		return
+	var layer := get_active_stack_layer(_target_mesh)
+	if layer == null:
+		return
+	_select_composite_option(layer.composite_mode)
+
+
+func _select_composite_option(mode: int) -> void:
+	for i in _composite_option.item_count:
+		if int(_composite_option.get_item_metadata(i)) == mode:
+			_composite_option.select(i)
+			return
+	_composite_option.select(0)
+
+
+func _on_composite_selected(index: int) -> void:
+	if _target_mesh == null:
+		return
+	var layer := get_active_stack_layer(_target_mesh)
+	var layer_index := get_active_stack_layer_index(_target_mesh)
+	if layer == null or layer_index <= 0:
+		return
+	layer.composite_mode = int(_composite_option.get_item_metadata(index))
+	var stack := _current_stack()
+	if stack == null:
+		return
+	var err := _save_current_stack(stack)
+	if err != "":
+		set_status(err)
+		return
+	_queue_material_rebuild(_target_mesh)
+	refresh_shader_stack_ui()
 
 
 func on_layer_material_edited(material: ShaderMaterial) -> void:
@@ -440,19 +841,54 @@ func _flush_material_rebuild() -> void:
 
 
 func _resolve_target_mesh() -> Node3D:
-	var node := _get_selected_node3d()
-	if node:
-		var target := GodotASketchBrushable.resolve_paint_target(node)
-		if target:
-			return target
-	return _context_mesh
+	var mesh := _get_selected_paint_node()
+	if mesh:
+		return mesh
+	if _tool_active and _context_mesh:
+		return _context_mesh
+	return null
+
+
+func _get_selected_paint_node() -> Node3D:
+	var nodes := EditorInterface.get_selection().get_selected_nodes()
+	for raw in nodes:
+		var mesh := _paint_node_from(raw)
+		if mesh:
+			return mesh
+	return null
+
+
+func _paint_node_from(node: Node) -> Node3D:
+	if node is MeshInstance3D or node is MultiMeshInstance3D:
+		return node
+	if node is Node3D:
+		var walk: Node3D = node
+		while walk:
+			if walk is MeshInstance3D or walk is MultiMeshInstance3D:
+				return walk
+			walk = walk.get_parent() as Node3D
+		return GodotASketchBrushable.resolve_paint_target(node)
+	return null
+
+
+func _get_selected_node3d() -> Node3D:
+	var nodes := EditorInterface.get_selection().get_selected_nodes()
+	if nodes.is_empty():
+		return null
+	var node: Node = nodes[0]
+	return node if node is Node3D else null
 
 
 func _update_mark_buttons(target: Node3D) -> void:
-	var node := _get_selected_node3d()
-	var can_mark := node != null and GodotASketchBrushable.resolve_paint_target(node) != null
+	var can_mark := (
+		target != null
+		and (target is MeshInstance3D or target is MultiMeshInstance3D)
+		and not GodotASketchBrushable.is_brushable(target)
+	)
 	_mark_brushable_button.disabled = not can_mark
-	_unmark_brushable_button.disabled = target == null or not GodotASketchBrushable.is_brushable(target)
+	_unmark_brushable_button.disabled = (
+		target == null or not GodotASketchBrushable.is_paint_surface(target)
+	)
 
 
 func _current_stack() -> GodotASketchShaderStack:
@@ -466,12 +902,14 @@ func _save_current_stack(stack: GodotASketchShaderStack) -> String:
 
 
 func _layer_list_text(layer: GodotASketchShaderStackLayer) -> String:
-	var channel: String = _MASK_CHANNELS[clampi(layer.mask_channel, 0, 3)]
 	var layer_shader := layer.get_shader()
 	if layer_shader == null:
 		return "%s  (assign shader)" % layer.display_name
 	var shader_file := layer_shader.resource_path.get_file() if layer_shader.resource_path else "?"
-	var text := "%s  w=%.2f  %s  %s" % [layer.display_name, layer.weight, channel, shader_file]
+	var composite := ""
+	if layer.order > 0:
+		composite = "  %s" % _COMPOSITE_MODES[clampi(layer.composite_mode, 0, 3)]
+	var text := "%s  w=%.2f%s  %s" % [layer.display_name, layer.weight, composite, shader_file]
 	if _target_mesh:
 		var compat_err := GodotASketchShaderValidator.layer_mesh_compat_error(layer_shader, _target_mesh)
 		if compat_err != "":
@@ -621,6 +1059,11 @@ func _on_refresh_catalog_pressed() -> void:
 	set_status("Shader catalog refreshed")
 
 
+func _on_show_catalog_toggled(_enabled: bool) -> void:
+	_apply_catalog_visibility()
+	_update_layer_contract_button()
+
+
 func _on_add_menu_id_pressed(id: int) -> void:
 	match id:
 		MENU_TEMPLATE_LAYER:
@@ -704,14 +1147,20 @@ func _add_layer_from_shader(shader: Shader, display_name: String = "") -> void:
 	if stack == null:
 		set_status("Could not create stack — check Output panel")
 		return
+	if not GodotASketchBrushable.is_brushable(_target_mesh):
+		var mark_err := GodotASketchBrushable.mark(_target_mesh)
+		if mark_err != "":
+			set_status(mark_err)
+			return
 	if stack.layers.size() >= MAX_STACK_LAYERS:
-		set_status("Stack supports %d layers (RGBA splat channels)" % MAX_STACK_LAYERS)
+		set_status("Stack supports up to %d layers" % MAX_STACK_LAYERS)
 		return
 	var layer := ShaderStackLayer.new()
 	layer.assign_shader(shader)
 	layer.display_name = display_name if display_name != "" else shader.resource_path.get_file().get_basename()
-	layer.mask_channel = stack.layers.size()
 	stack.add_layer(layer)
+	var layer_index := stack.layers.size() - 1
+	SplatMapAssign.ensure_layer_map(_target_mesh, layer, layer_index)
 	var had_shader_mat := _target_mesh.material_override is ShaderMaterial
 	var err := _save_current_stack(stack)
 	if err != "":
@@ -794,38 +1243,35 @@ func _on_paste_stack_pressed() -> void:
 	if err != "":
 		set_status(err)
 		return
+	GodotASketchBrushable.ensure_splat_maps(_target_mesh)
 	_queue_material_rebuild(_target_mesh)
 	refresh_shader_stack_ui()
 	set_status("Stack pasted")
 
 
 func _on_mark_brushable_pressed() -> void:
-	var node := _get_selected_node3d()
-	if node == null:
-		set_status("Select a MeshInstance3D or MultiMeshInstance3D")
-		return
-	var target := GodotASketchBrushable.resolve_paint_target(node)
+	var target := _get_selected_paint_node()
 	if target == null:
-		set_status("Selection has no MeshInstance3D or MultiMeshInstance3D")
+		set_status("Select a MeshInstance3D or MultiMeshInstance3D")
 		return
 	if GodotASketchBrushable.is_brushable(target):
 		set_status("%s is already brushable" % target.name)
 		return
-	var err := GodotASketchBrushable.mark(node)
-	set_status(err if err != "" else "Marked brushable: %s" % target.name)
+	var err := GodotASketchBrushable.mark(target)
+	if err != "":
+		set_status(err)
+		push_warning("Godot-a-Sketch: %s" % err)
+		return
+	set_status("Marked brushable: %s — use Add → Template layer to start" % target.name)
 	refresh_shader_stack_ui()
 
 
 func _on_unmark_brushable_pressed() -> void:
-	var node := _get_selected_node3d()
-	if node == null:
-		set_status("Select a MeshInstance3D or MultiMeshInstance3D")
-		return
-	var target := GodotASketchBrushable.resolve_paint_target(node)
+	var target := _get_selected_paint_node()
 	if target == null or not GodotASketchBrushable.is_brushable(target):
 		set_status("Selection is not brushable")
 		return
-	var err := GodotASketchBrushable.unmark(node)
+	var err := GodotASketchBrushable.unmark(target)
 	set_status(err if err != "" else "Unmarked brushable")
 	refresh_shader_stack_ui()
 
@@ -888,7 +1334,7 @@ func _on_tool_active_toggled(enabled: bool) -> void:
 	if not enabled:
 		set_status("3D tool off — move/select in viewport normally")
 	else:
-		set_status("3D tool on — hold modifier to paint/erase; ghost shows without modifier")
+		set_status("3D tool on — hold Alt + LMB on mesh to paint; without modifier: normal editor")
 	tool_active_changed.emit(enabled)
 
 
@@ -896,9 +1342,25 @@ func is_tool_active() -> bool:
 	return _tool_active
 
 
-func is_input_armed() -> bool:
+func is_input_armed(event: InputEvent = null) -> bool:
 	if not _tool_active:
 		return false
+	if _modifier_mask == GodotASketchConstants.MODIFIER_NONE:
+		return false
+	if event != null:
+		return _modifier_on_event(event)
+	return is_modifier_held()
+
+
+func _modifier_on_event(event: InputEvent) -> bool:
+	if event is InputEventMouse:
+		var mouse := event as InputEventMouse
+		if _modifier_mask == KEY_MASK_SHIFT:
+			return mouse.shift_pressed
+		if _modifier_mask == KEY_MASK_ALT:
+			return mouse.alt_pressed or mouse.meta_pressed
+		if _modifier_mask == KEY_MASK_CTRL:
+			return mouse.ctrl_pressed
 	return is_modifier_held()
 
 
@@ -919,17 +1381,9 @@ func _on_mode_selected(index: int) -> void:
 	_emit_ghost_settings_changed()
 
 
-func _get_selected_node3d() -> Node3D:
-	var nodes := EditorInterface.get_selection().get_selected_nodes()
-	if nodes.is_empty():
-		return null
-	var node: Node = nodes[0]
-	return node if node is Node3D else null
-
-
 func is_modifier_held() -> bool:
 	if _modifier_mask == GodotASketchConstants.MODIFIER_NONE:
-		return true
+		return false
 	if _modifier_mask == KEY_MASK_SHIFT:
 		return Input.is_key_pressed(KEY_SHIFT)
 	if _modifier_mask == KEY_MASK_ALT:

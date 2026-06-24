@@ -8,6 +8,8 @@ const ShaderStackAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_s
 const ShaderStackLayer := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack_layer.gd")
 const ShaderValidator := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_validator.gd")
 
+static var _triangle_meshes: Dictionary = {}
+
 
 static func mark(node: Node3D) -> String:
 	var target := resolve_paint_target(node)
@@ -41,7 +43,9 @@ static func _mark_surface_mesh(mesh: MeshInstance3D) -> String:
 	mesh.add_to_group(Constants.BRUSHABLE_GROUP)
 	_cache_triangle_mesh(mesh)
 	MeshUV.cache(mesh)
-	SplatMapAssign.ensure_map(mesh)
+	var stack_err := _ensure_stack_splat_maps(mesh)
+	if stack_err != "":
+		return stack_err
 	snapshot_base_material_override(mesh)
 	_sync_paint_body(mesh)
 	_mark_scene_edited(mesh)
@@ -53,7 +57,9 @@ static func _mark_multimesh(multimesh: MultiMeshInstance3D) -> String:
 		return "MultiMeshInstance3D has no multimesh mesh"
 	multimesh.set_meta(Constants.BRUSHABLE_META, true)
 	multimesh.add_to_group(Constants.BRUSHABLE_GROUP)
-	SplatMapAssign.ensure_map(multimesh)
+	var stack_err := _ensure_stack_splat_maps(multimesh)
+	if stack_err != "":
+		return stack_err
 	snapshot_base_material_override(multimesh)
 	rebuild_material_stack(multimesh)
 	_mark_scene_edited(multimesh)
@@ -66,9 +72,10 @@ static func _unmark_surface_mesh(mesh: MeshInstance3D) -> String:
 		mesh.remove_meta(Constants.BRUSHABLE_META)
 	if mesh.has_meta(Constants.TRIANGLE_MESH_META):
 		mesh.remove_meta(Constants.TRIANGLE_MESH_META)
+	_triangle_meshes.erase(mesh.get_instance_id())
 	MeshUV.clear(mesh)
 	ShaderStackAssign.detach_stack(mesh)
-	SplatMapAssign.detach_map(mesh)
+	SplatMapAssign.detach_layer_maps(mesh)
 	_clear_stack_material_override(mesh)
 	if mesh.has_meta(Constants.AUTO_BODY_META) and mesh.get_meta(Constants.AUTO_BODY_META):
 		var auto_body := mesh.get_node_or_null(Constants.AUTO_BODY_NAME)
@@ -88,7 +95,7 @@ static func _unmark_multimesh(multimesh: MultiMeshInstance3D) -> String:
 	if multimesh.has_meta(Constants.BRUSHABLE_META):
 		multimesh.remove_meta(Constants.BRUSHABLE_META)
 	ShaderStackAssign.detach_stack(multimesh)
-	SplatMapAssign.detach_map(multimesh)
+	SplatMapAssign.detach_layer_maps(multimesh)
 	_clear_stack_material_override(multimesh)
 	_mark_scene_edited(multimesh)
 	return ""
@@ -104,6 +111,14 @@ static func is_brushable(node: Node) -> bool:
 	if node.is_in_group(Constants.BRUSHABLE_GROUP):
 		return true
 	return node.has_meta(Constants.BRUSHABLE_META)
+
+
+static func is_paint_surface(node: Node) -> bool:
+	if is_brushable(node):
+		return true
+	if node is MeshInstance3D:
+		return ShaderStackAssign.stack_path(node as Node3D) != ""
+	return false
 
 
 static func is_multimesh_target(target: Node) -> bool:
@@ -163,14 +178,22 @@ static func refresh_splat_uniforms_on_mesh(target: Node3D) -> void:
 	var geom := as_geometry(target)
 	if geom == null:
 		return
-	var map_tex := _splat_texture_for_mesh(target)
-	if map_tex == null:
+	var stack := ShaderStackAssign.load_stack(target)
+	if stack == null:
+		return
+	var layers := _viewport_stack_layers(stack, is_multimesh_target(target))
+	if layers.is_empty():
 		return
 	var mat: Material = geom.material_override
-	while mat:
+	var pass_index := 0
+	while mat and pass_index < layers.size():
 		if mat is ShaderMaterial:
-			(mat as ShaderMaterial).set_shader_parameter("splat_mask", map_tex)
+			var map_tex := _splat_texture_for_layer(target, layers[pass_index], pass_index)
+			if map_tex:
+				(mat as ShaderMaterial).set_shader_parameter("splat_mask", map_tex)
+			_apply_layer_contract(mat as ShaderMaterial, layers[pass_index])
 		mat = mat.next_pass
+		pass_index += 1
 
 
 static func has_viewport_stack(target: Node3D) -> bool:
@@ -193,13 +216,13 @@ static func rebuild_material_stack(target: Node3D) -> void:
 	if layers.is_empty():
 		_clear_stack_material_override(target)
 		return
-	var map_tex := _splat_texture_for_mesh(target)
 	var passes: Array[ShaderMaterial] = []
 	for i in layers.size():
 		var layer_shader: Shader = layers[i].get_shader()
 		var compat_err := ShaderValidator.layer_mesh_compat_error(layer_shader, target)
 		if compat_err != "":
 			push_warning("Godot-a-Sketch: %s" % compat_err)
+		var map_tex := _splat_texture_for_layer(target, layers[i], i)
 		var mat := pass_material_for_layer(layers[i], map_tex, i)
 		if mat:
 			passes.append(mat)
@@ -220,13 +243,42 @@ static func pass_material_for_layer(
 ) -> ShaderMaterial:
 	if layer == null:
 		return null
-	var src: ShaderMaterial = layer.ensure_layer_material()
-	if src.shader == null:
-		return null
-	var mat: ShaderMaterial = src.duplicate() as ShaderMaterial
+	var mat: ShaderMaterial
+	if pass_index == 0:
+		var src: ShaderMaterial = layer.ensure_layer_material()
+		if src.shader == null:
+			return null
+		mat = src.duplicate() as ShaderMaterial
+	else:
+		var shell := load(_stack_pass_path(layer.composite_mode)) as Shader
+		if shell == null:
+			return null
+		mat = ShaderMaterial.new()
+		mat.shader = shell
+		_copy_layer_uniforms(layer.ensure_layer_material(), mat)
 	mat.render_priority = pass_index
 	_apply_layer_contract(mat, layer, map_tex)
 	return mat
+
+
+static func _stack_pass_path(mode: int) -> String:
+	match mode:
+		ShaderStackLayer.CompositeMode.ADD:
+			return Constants.STACK_PASS_ADD
+		ShaderStackLayer.CompositeMode.SUBTRACT:
+			return Constants.STACK_PASS_SUB
+		ShaderStackLayer.CompositeMode.MULTIPLY:
+			return Constants.STACK_PASS_MUL
+	return Constants.STACK_PASS_MIX
+
+
+static func _copy_layer_uniforms(src: ShaderMaterial, dst: ShaderMaterial) -> void:
+	if src == null or dst == null or src.shader == null:
+		return
+	for entry in src.shader.get_shader_uniform_list():
+		if entry is Dictionary and entry.has("name"):
+			var name: String = entry["name"]
+			dst.set_shader_parameter(name, src.get_shader_parameter(name))
 
 
 static func stack_uses_layer_material(target: Node3D, material: ShaderMaterial) -> bool:
@@ -289,20 +341,43 @@ static func snapshot_base_material_override(target: Node3D) -> void:
 	target.set_meta(Constants.BASE_OVERRIDE_META, geom.material_override)
 
 
-static func _splat_texture_for_mesh(target: Node3D) -> Texture2D:
-	var map = SplatMapAssign.working_map(target)
+static func _splat_texture_for_layer(target: Node3D, layer, layer_index: int) -> Texture2D:
+	var map = SplatMapAssign.latest_map(target, layer_index)
 	if map == null:
-		map = SplatMapAssign.load_map(target)
+		map = SplatMapAssign.load_layer_map(target, layer, layer_index)
 	if map == null:
 		return null
 	return map.runtime_texture()
 
 
-static func _apply_layer_contract(mat: ShaderMaterial, layer, map_tex: Texture2D) -> void:
+static func _apply_layer_contract(mat: ShaderMaterial, layer, map_tex: Texture2D = null) -> void:
 	if map_tex:
 		mat.set_shader_parameter("splat_mask", map_tex)
-	mat.set_shader_parameter("mask_channel", layer.mask_channel)
 	mat.set_shader_parameter("layer_weight", layer.weight)
+
+
+static func ensure_splat_maps(target: Node3D) -> String:
+	if not is_brushable(target):
+		return ""
+	return _ensure_stack_splat_maps(target)
+
+
+static func _ensure_stack_splat_maps(target: Node3D) -> String:
+	var stack := ShaderStackAssign.load_stack(target)
+	if stack == null:
+		var err := ShaderStackAssign.ensure_stack_error(target)
+		if err != "":
+			return err
+		stack = ShaderStackAssign.load_stack(target)
+	if stack == null:
+		return "Could not create shader stack — save the scene, then retry"
+	SplatMapAssign.migrate_legacy_mesh_splat(target, stack)
+	for i in stack.layers.size():
+		var layer = stack.layers[i]
+		if layer:
+			if SplatMapAssign.ensure_layer_map(target, layer, i) == null:
+				return "Could not create splat map for layer %d" % i
+	return ""
 
 
 static func _find_brushable_paint_target_descendant(root: Node) -> Node3D:
@@ -316,18 +391,48 @@ static func _find_brushable_paint_target_descendant(root: Node) -> Node3D:
 
 
 static func triangle_mesh_for(mesh_instance: MeshInstance3D) -> TriangleMesh:
+	if mesh_instance == null:
+		return null
+	var id := mesh_instance.get_instance_id()
+	if _triangle_meshes.has(id):
+		var entry: Dictionary = _triangle_meshes[id]
+		if (
+			entry.get("owner") == mesh_instance
+			and entry.get("mesh_id") == _triangle_mesh_source_id(mesh_instance)
+		):
+			return entry.tri as TriangleMesh
+		_triangle_meshes.erase(id)
 	if mesh_instance.has_meta(Constants.TRIANGLE_MESH_META):
-		return mesh_instance.get_meta(Constants.TRIANGLE_MESH_META)
+		mesh_instance.remove_meta(Constants.TRIANGLE_MESH_META)
 	return _cache_triangle_mesh(mesh_instance)
+
+
+static func _triangle_mesh_source_id(mesh_instance: MeshInstance3D) -> RID:
+	return mesh_instance.mesh.get_rid() if mesh_instance.mesh else RID()
 
 
 static func _cache_triangle_mesh(mesh_instance: MeshInstance3D) -> TriangleMesh:
 	if mesh_instance.mesh == null:
 		return null
+	var id := mesh_instance.get_instance_id()
+	if _triangle_meshes.has(id):
+		var entry: Dictionary = _triangle_meshes[id]
+		if (
+			entry.get("owner") == mesh_instance
+			and entry.get("mesh_id") == _triangle_mesh_source_id(mesh_instance)
+		):
+			return entry.tri as TriangleMesh
+		_triangle_meshes.erase(id)
 	var triangle_mesh: TriangleMesh = mesh_instance.mesh.generate_triangle_mesh()
 	if triangle_mesh == null:
 		return null
-	mesh_instance.set_meta(Constants.TRIANGLE_MESH_META, triangle_mesh)
+	_triangle_meshes[id] = {
+		"tri": triangle_mesh,
+		"owner": mesh_instance,
+		"mesh_id": _triangle_mesh_source_id(mesh_instance),
+	}
+	if mesh_instance.has_meta(Constants.TRIANGLE_MESH_META):
+		mesh_instance.remove_meta(Constants.TRIANGLE_MESH_META)
 	return triangle_mesh
 
 
@@ -381,11 +486,24 @@ static func _shape_for_mesh(mesh: Mesh) -> Shape3D:
 	return mesh.create_trimesh_shape()
 
 
+static func ensure_paint_ready(mesh: MeshInstance3D) -> void:
+	if not is_paint_surface(mesh):
+		return
+	triangle_mesh_for(mesh)
+	_sync_paint_body(mesh)
+
+
 static func _sync_paint_body(mesh: MeshInstance3D) -> void:
-	var body := mesh.get_node_or_null(Constants.AUTO_BODY_NAME) as CollisionObject3D
+	var body := mesh.get_node_or_null(Constants.AUTO_BODY_NAME) as Node3D
 	if body == null:
 		return
-	body.global_transform = mesh.global_transform
+	body.transform = Transform3D.IDENTITY
+
+
+static func apply_paint_feedback(surface: Node3D, rebuild_grass: bool = true) -> void:
+	refresh_splat_uniforms_on_mesh(surface)
+	if rebuild_grass:
+		rebuild_grass_fields_for_surface(surface)
 
 
 static func rebuild_grass_fields_for_surface(surface: Node3D) -> void:
@@ -395,10 +513,8 @@ static func rebuild_grass_fields_for_surface(surface: Node3D) -> void:
 	if tree == null:
 		return
 	for node in tree.get_nodes_in_group(&"grass_field"):
-		if not node.has_method("_request_rebuild"):
+		if not node.has_method("owns_surface"):
 			continue
-		var surface_path: NodePath = node.get("surface")
-		if surface_path.is_empty():
-			continue
-		if node.get_node_or_null(surface_path) == surface:
-			node._request_rebuild()
+		if node.owns_surface(surface):
+			# Splat paint finished — refresh grass even when editor preview is off.
+			node._request_rebuild(true)

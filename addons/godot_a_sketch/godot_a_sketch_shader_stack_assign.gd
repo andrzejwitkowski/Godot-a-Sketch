@@ -5,6 +5,9 @@ class_name GodotASketchShaderStackAssign
 const Constants := preload("res://addons/godot_a_sketch/godot_a_sketch_constants.gd")
 const ShaderStack := preload("res://addons/godot_a_sketch/godot_a_sketch_shader_stack.gd")
 
+# ponytail: per-mesh RAM cache — upgrade path: reload_stack() after external .tres edits
+static var _stack_cache: Dictionary = {}
+
 
 static func stack_path(target: Node3D) -> String:
 	if target == null or not target.has_meta(Constants.SHADER_STACK_META):
@@ -13,17 +16,43 @@ static func stack_path(target: Node3D) -> String:
 
 
 static func load_stack(target: Node3D) -> GodotASketchShaderStack:
-	var path := stack_path(target)
-	if path.is_empty() or not ResourceLoader.exists(path):
+	if target == null:
 		return null
-	var stack := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE) as GodotASketchShaderStack
+	var path := stack_path(target)
+	if path.is_empty():
+		return null
+	var id := target.get_instance_id()
+	var cached: Dictionary = _stack_cache.get(id, {})
+	if cached.get("path", "") == path:
+		var hit: GodotASketchShaderStack = cached.get("stack")
+		if hit and not _is_placeholder(hit) and not hit.layers.is_empty():
+			return hit
+		if hit and hit.layers.is_empty():
+			_stack_cache.erase(id)
+	if not _resource_exists(path):
+		return null
+	var stack := ResourceLoader.load(path) as GodotASketchShaderStack
 	if _is_placeholder(stack):
 		push_warning("Godot-a-Sketch: stale stack resource at %s — will recreate" % path)
 		return null
 	for layer in stack.layers:
 		if layer:
+			layer.migrate_legacy_fields()
 			layer.migrate_shader_to_material()
+	_stack_cache[id] = {"path": path, "stack": stack}
 	return stack
+
+
+static func reload_stack(target: Node3D) -> GodotASketchShaderStack:
+	invalidate_stack_cache(target)
+	return load_stack(target)
+
+
+static func invalidate_stack_cache(target: Node3D = null) -> void:
+	if target:
+		_stack_cache.erase(target.get_instance_id())
+	else:
+		_stack_cache.clear()
 
 
 static func _is_placeholder(resource: Resource) -> bool:
@@ -49,10 +78,11 @@ static func assign_stack(target: Node3D, stack: GodotASketchShaderStack, path: S
 	if save_err != OK:
 		return "Failed to save stack: %s" % error_string(save_err)
 	target.set_meta(Constants.SHADER_STACK_META, path)
+	_stack_cache[target.get_instance_id()] = {"path": path, "stack": stack}
 	EditorInterface.mark_scene_as_unsaved()
 	var fs := EditorInterface.get_resource_filesystem()
 	if fs:
-		fs.call_deferred("scan")
+		fs.call_deferred("update_file", path)
 	return ""
 
 
@@ -61,9 +91,19 @@ static func ensure_stack(target: Node3D) -> GodotASketchShaderStack:
 	if stack and not _is_placeholder(stack):
 		return stack
 	stack = ShaderStack.new()
-	if assign_stack(target, stack) != "":
+	var err := assign_stack(target, stack)
+	if err != "":
+		push_warning("Godot-a-Sketch: %s" % err)
 		return null
 	return stack
+
+
+static func ensure_stack_error(target: Node3D) -> String:
+	var stack := load_stack(target)
+	if stack and not _is_placeholder(stack):
+		return ""
+	stack = ShaderStack.new()
+	return assign_stack(target, stack)
 
 
 static func assign_stack_copy(target: Node3D, stack: GodotASketchShaderStack) -> String:
@@ -74,6 +114,7 @@ static func detach_stack(target: Node3D, delete_file: bool = true) -> void:
 	if target == null or not target.has_meta(Constants.SHADER_STACK_META):
 		return
 	var path := String(target.get_meta(Constants.SHADER_STACK_META))
+	invalidate_stack_cache(target)
 	target.remove_meta(Constants.SHADER_STACK_META)
 	if not delete_file or not path.begins_with(Constants.SHADER_STACK_DEFAULT_DIR):
 		return
@@ -89,7 +130,29 @@ static func detach_stack(target: Node3D, delete_file: bool = true) -> void:
 
 
 static func _default_path(target: Node3D) -> String:
-	return Constants.SHADER_STACK_DEFAULT_DIR.path_join("%s.tres" % Constants.paint_target_slug(target))
+	var slug := Constants.paint_target_slug(target)
+	var owned := stack_path(target)
+	if not owned.is_empty() and Constants.is_usable_resource_path(owned):
+		return owned
+	var base := Constants.SHADER_STACK_DEFAULT_DIR.path_join("%s.tres" % slug)
+	if not _resource_exists(base):
+		return base
+	var n := 2
+	while n < 1000:
+		var candidate := Constants.SHADER_STACK_DEFAULT_DIR.path_join("%s_%d.tres" % [slug, n])
+		if not _resource_exists(candidate):
+			return candidate
+		n += 1
+	return base
+
+
+static func _resource_exists(path: String) -> bool:
+	if path.is_empty():
+		return false
+	if ResourceLoader.exists(path):
+		return true
+	var abs := ProjectSettings.globalize_path(path)
+	return not abs.is_empty() and FileAccess.file_exists(abs)
 
 
 static func _ensure_parent_dir(path: String) -> String:

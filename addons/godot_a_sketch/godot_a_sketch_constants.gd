@@ -10,7 +10,7 @@ const AUTO_BODY_NAME := "_GodotASketchBody"
 const AUTO_BODY_META := "godot_a_sketch_auto_body"
 const SETTINGS_MODIFIER_KEY := "godot_a_sketch/input/modifier_key"
 const MODIFIER_NONE := 0
-const DEFAULT_MODIFIER_MASK := MODIFIER_NONE
+const DEFAULT_MODIFIER_MASK := KEY_MASK_ALT
 const RAY_LENGTH := 10000.0
 
 const GHOST_NODE_NAME := "_GodotASketchGhost"
@@ -29,33 +29,62 @@ const SHADER_STACK_META := "godot_a_sketch_shader_stack_path"
 const SHADER_STACK_DEFAULT_DIR := "res://godot_a_sketch_stacks/"
 const BUNDLED_SHADER_DIR := "res://addons/godot_a_sketch/shaders/"
 const LAYER_TEMPLATE_PATH := "res://addons/godot_a_sketch/shaders/layer_template.gdshader"
+const STACK_PASS_MIX := "res://addons/godot_a_sketch/shaders/stack_pass_mix.gdshader"
+const STACK_PASS_ADD := "res://addons/godot_a_sketch/shaders/stack_pass_add.gdshader"
+const STACK_PASS_MUL := "res://addons/godot_a_sketch/shaders/stack_pass_mul.gdshader"
+const STACK_PASS_SUB := "res://addons/godot_a_sketch/shaders/stack_pass_sub.gdshader"
 
 const SPLAT_MAP_META := "godot_a_sketch_splat_map_path"
 const SPLAT_MAP_DEFAULT_DIR := "res://godot_a_sketch_splats/"
 const SETTINGS_SPLAT_SIZE := "godot_a_sketch/splat/default_size"
-const DEFAULT_SPLAT_SIZE := 1024
+const SPLAT_SIZE_OPTIONS := [64, 128, 256, 512, 1024]
+const DEFAULT_SPLAT_SIZE := 256
 const MESH_UV_META := "godot_a_sketch_mesh_uv_cache"
 const BASE_OVERRIDE_META := "godot_a_sketch_base_material_override"
 
 
 static func paint_target_slug(target: Node3D) -> String:
+	return "%s__%s" % [scene_slug(target), mesh_slug(target)]
+
+
+static func scene_slug(target: Node3D) -> String:
+	return _scene_file_slug(_scene_root_for(target))
+
+
+static func mesh_slug(target: Node3D) -> String:
 	if target == null:
 		return "unknown_mesh"
-	var scene_root := EditorInterface.get_edited_scene_root()
-	var scene_name := _scene_file_slug(scene_root)
+	var scene_root := _scene_root_for(target)
 	if scene_root == null:
-		return "%s__%s_%d" % [scene_name, String(target.name).validate_filename(), target.get_instance_id()]
+		return "%s_%d" % [String(target.name).validate_filename(), target.get_instance_id()]
 	if target == scene_root:
-		return "%s__%s" % [scene_name, String(target.name).validate_filename()]
+		return _safe_node_name(target.name)
 	var parts: PackedStringArray = []
 	var node: Node = target
 	while node and node != scene_root:
 		parts.append(_safe_node_name(node.name))
 		node = node.get_parent()
 	if node != scene_root:
-		return "%s__%s_%d" % [scene_name, String(target.name).validate_filename(), target.get_instance_id()]
+		return "%s_%d" % [String(target.name).validate_filename(), target.get_instance_id()]
 	parts.reverse()
-	return "%s__%s" % [scene_name, "_".join(parts)]
+	return "_".join(parts)
+
+
+static func splat_layer_dir(target: Node3D) -> String:
+	return SPLAT_MAP_DEFAULT_DIR.path_join(scene_slug(target)).path_join(mesh_slug(target))
+
+
+static func splat_layer_path(target: Node3D, layer_index: int) -> String:
+	return splat_layer_dir(target).path_join("layer_%d.tres" % layer_index)
+
+
+static func _scene_root_for(target: Node3D) -> Node:
+	var scene_root := EditorInterface.get_edited_scene_root()
+	if scene_root != null:
+		return scene_root
+	if target != null and target.is_inside_tree():
+		return target.get_tree().edited_scene_root
+	return null
 
 
 static func _scene_file_slug(scene_root: Node) -> String:

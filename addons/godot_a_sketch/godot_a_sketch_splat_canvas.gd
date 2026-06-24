@@ -16,9 +16,9 @@ var _last_uv := Vector2(-1.0, -1.0)
 func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_IGNORE
 	if _display:
-		_display.mouse_filter = MOUSE_FILTER_IGNORE
+		_display.mouse_filter = MOUSE_FILTER_PASS
 		_display.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		_display.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_display.stretch_mode = TextureRect.STRETCH_SCALE
 		_display.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 
@@ -38,27 +38,31 @@ func set_preview_texture(tex: Texture2D) -> void:
 func _gui_input(event: InputEvent) -> void:
 	if not _editable:
 		return
+	var local := get_local_mouse_position()
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if mb.pressed:
-			var uv := _local_to_uv(mb.position)
+			var uv := _local_to_uv(local)
 			if uv.x < 0.0:
 				return
 			_dragging = true
 			_last_uv = uv
 			stroke_begin.emit()
 			stroke_uv.emit(Vector2(-1.0, -1.0), uv)
+			accept_event()
 		elif _dragging:
 			_cancel_drag()
 			stroke_end.emit()
+			accept_event()
 	elif event is InputEventMouseMotion and _dragging:
-		var uv := _local_to_uv(event.position)
+		var uv := _local_to_uv(local)
 		if uv.x < 0.0:
 			return
 		stroke_uv.emit(_last_uv, uv)
 		_last_uv = uv
+		accept_event()
 
 
 func _cancel_drag() -> void:
@@ -67,17 +71,8 @@ func _cancel_drag() -> void:
 
 
 func _local_to_uv(local: Vector2) -> Vector2:
-	var rect_size := size
-	if rect_size.x <= 0.0 or rect_size.y <= 0.0:
+	if size.x <= 0.0 or size.y <= 0.0:
 		return Vector2(-1.0, -1.0)
-	var tex := _display.texture as Texture2D
-	var tex_size := tex.get_size() if tex else Vector2.ONE
-	if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+	if local.x < 0.0 or local.y < 0.0 or local.x > size.x or local.y > size.y:
 		return Vector2(-1.0, -1.0)
-	var scale := minf(rect_size.x / tex_size.x, rect_size.y / tex_size.y)
-	var draw_size := tex_size * scale
-	var offset := (rect_size - draw_size) * 0.5
-	var rel := local - offset
-	if rel.x < 0.0 or rel.y < 0.0 or rel.x > draw_size.x or rel.y > draw_size.y:
-		return Vector2(-1.0, -1.0)
-	return Vector2(rel.x / draw_size.x, rel.y / draw_size.y)
+	return Vector2(local.x / size.x, local.y / size.y)

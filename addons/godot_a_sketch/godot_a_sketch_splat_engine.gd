@@ -58,3 +58,4 @@ static func stamp(
 	region_img.set_data(rw, rh, false, Image.FORMAT_RGBA8, data)
 	img.blit_rect(region_img, Rect2i(0, 0, rw, rh), Vector2i(x0, y0))
 	map.patch_preview_from_stamp(x0, y0, x1, y1)
+	map.preview_texture(channel)

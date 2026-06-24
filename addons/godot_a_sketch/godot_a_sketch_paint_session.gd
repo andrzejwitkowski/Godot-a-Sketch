@@ -5,26 +5,34 @@ const SplatMapAssign := preload("res://addons/godot_a_sketch/godot_a_sketch_spla
 const MAX_STAMPS_PER_LINE := 8
 
 var _active_mesh: MeshInstance3D
+var _active_layer
+var _active_layer_index := -1
 var _painting := false
 
 
-func begin_stroke(mesh: MeshInstance3D) -> void:
-	if mesh == null:
+func begin_stroke(mesh: MeshInstance3D, layer, layer_index: int) -> void:
+	if mesh == null or layer == null:
 		return
-	var map: GodotASketchSplatMap = SplatMapAssign.begin_edit(mesh)
+	var map: GodotASketchSplatMap = SplatMapAssign.begin_edit(mesh, layer, layer_index)
 	if map == null:
 		return
 	_active_mesh = mesh
+	_active_layer = layer
+	_active_layer_index = layer_index
 	_painting = true
 
 
 func end_stroke() -> MeshInstance3D:
-	if not _painting or _active_mesh == null:
+	if not _painting or _active_mesh == null or _active_layer == null:
 		return null
 	var mesh := _active_mesh
-	var map: GodotASketchSplatMap = SplatMapAssign.commit_edit(mesh)
+	var layer = _active_layer
+	var layer_index := _active_layer_index
+	var map: GodotASketchSplatMap = SplatMapAssign.commit_edit(mesh, layer, layer_index)
 	_painting = false
 	_active_mesh = null
+	_active_layer = null
+	_active_layer_index = -1
 	return mesh if map else null
 
 
@@ -35,24 +43,25 @@ func stamp_line(
 	brush_size: float,
 	opacity_pct: float,
 	hardness_pct: float,
-	layer: GodotASketchShaderStackLayer,
+	layer,
+	layer_index: int,
 	erase: bool = false
 ) -> void:
 	if mesh == null or layer == null:
 		return
-	var map: GodotASketchSplatMap = SplatMapAssign.working_map(mesh)
+	var map: GodotASketchSplatMap = SplatMapAssign.working_layer_map(mesh, layer_index)
 	if map == null:
 		if _painting:
 			push_warning("Godot-a-Sketch: stamp without working splat map — stroke ignored")
 			return
-		map = SplatMapAssign.ensure_map(mesh)
+		map = SplatMapAssign.ensure_layer_map(mesh, layer, layer_index)
 		if map == null:
 			return
 	var radius := _uv_radius(brush_size, map.size.x)
 	var strength := opacity_pct / 100.0
 	var hardness := hardness_pct / 100.0
-	var channel := clampi(layer.mask_channel, 0, 3)
-	var blend := int(layer.blend_mode)
+	var blend := int(layer.paint_blend_mode)
+	var channel := 0
 	if from_uv.x < 0.0:
 		GodotASketchSplatEngine.stamp(map, to_uv, radius, strength, hardness, channel, blend, erase)
 		return
