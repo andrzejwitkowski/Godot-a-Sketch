@@ -120,6 +120,23 @@ static func resolve_uv_ray(
 	return {"uv": uv, "planar": not has_mesh_uvs(mesh_instance) or face_index < 0}
 
 
+static func uv_on_triangle(
+	mesh_instance: MeshInstance3D,
+	local_pos: Vector3,
+	a: Vector3,
+	b: Vector3,
+	c: Vector3,
+	local_normal: Vector3 = Vector3.UP
+) -> Vector2:
+	if mesh_instance == null or mesh_instance.mesh == null:
+		return Vector2(-1.0, -1.0)
+	var tri_uvs := _find_uvs_for_triangle(mesh_instance.mesh, a, b, c)
+	if tri_uvs.size() == 3:
+		var bary := Geometry3D.get_triangle_barycentric_coords(local_pos, a, b, c)
+		return tri_uvs[0] * bary.x + tri_uvs[1] * bary.y + tri_uvs[2] * bary.z
+	return _planar_uv(mesh_instance, local_pos, local_normal)
+
+
 static func has_mesh_uvs(mesh_instance: MeshInstance3D) -> bool:
 	if mesh_instance == null:
 		return false
